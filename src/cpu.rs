@@ -1,18 +1,27 @@
-use bitflags::bitflags;
-
 use crate::{
-    instruction::{CpuFlag, CpuRegister, Instruction, InstructionOperand},
+    instruction::{CpuRegister, Instruction, InstructionOperand},
     mmu::Mmu,
 };
 
-bitflags! {
-    struct CpuFlags: u8 {
-        const ZERO = 1 << 7;
-        const SUBTRACTION = 1 << 6;
-        const HALF_CARRY = 1 << 5;
-        const CARRY = 1 << 4;
+#[derive(Debug, Clone, Copy)]
+pub enum CpuFlag {
+    Zero,
+    Subtraction,
+    HalfCarry,
+    Carry,
+}
+
+impl CpuFlag {
+    pub fn bit(&self) -> u8 {
+        match self {
+            CpuFlag::Zero => 1 << 7,
+            CpuFlag::Subtraction => 1 << 6,
+            CpuFlag::HalfCarry => 1 << 5,
+            CpuFlag::Carry => 1 << 4,
+        }
     }
 }
+
 pub struct Cpu {
     a: u8,
     b: u8,
@@ -21,7 +30,7 @@ pub struct Cpu {
     e: u8,
     h: u8,
     l: u8,
-    flags: CpuFlags,
+    f: u8,
     sp: u16,
     pc: u16,
 }
@@ -36,19 +45,19 @@ impl Cpu {
             e: 0,
             h: 0,
             l: 0,
-            flags: CpuFlags::empty(),
+            f: 0,
             sp: 0,
             pc: 0,
         }
     }
 
     pub fn af(&self) -> u16 {
-        (self.a as u16) << 8 | (self.flags.bits() as u16)
+        (self.a as u16) << 8 | (self.f as u16)
     }
 
     pub fn set_af(&mut self, value: u16) {
         self.a = (value >> 8) as u8;
-        self.flags = unsafe { CpuFlags::from_bits_unchecked(value as u8) };
+        self.f = value as u8;
     }
 
     pub fn bc(&self) -> u16 {
@@ -78,7 +87,172 @@ impl Cpu {
         self.l = value as u8;
     }
 
-    pub fn fetch_instruction(&mut self, mmu: &mut Mmu) -> Option<Instruction> {
+    pub fn get_flag(&self, flag: CpuFlag) -> bool {
+        self.f & flag.bit() != 0
+    }
+
+    pub fn set_flag(&mut self, flag: CpuFlag, value: bool) {
+        if value {
+            self.f |= flag.bit()
+        } else {
+            self.f &= !flag.bit()
+        }
+    }
+
+    fn get_reg_u8(&mut self, reg: CpuRegister) -> u8 {
+        match reg {
+            CpuRegister::A => self.a,
+            CpuRegister::B => self.b,
+            CpuRegister::C => self.c,
+            CpuRegister::D => self.d,
+            CpuRegister::E => self.e,
+            CpuRegister::H => self.h,
+            CpuRegister::L => self.l,
+            CpuRegister::F => self.f,
+            _ => panic!("tried to get u8 value of register {:?}", reg),
+        }
+    }
+
+    fn set_reg_u8(&mut self, reg: CpuRegister, value: u8) {
+        match reg {
+            CpuRegister::A => self.a = value,
+            CpuRegister::B => self.b = value,
+            CpuRegister::C => self.c = value,
+            CpuRegister::D => self.d = value,
+            CpuRegister::E => self.e = value,
+            CpuRegister::H => self.h = value,
+            CpuRegister::L => self.l = value,
+            CpuRegister::F => self.f = value,
+            CpuRegister::AF => self.set_af(value as u16),
+            CpuRegister::BC => self.set_bc(value as u16),
+            CpuRegister::DE => self.set_de(value as u16),
+            CpuRegister::HL => self.set_hl(value as u16),
+            CpuRegister::SP => self.sp = value as u16,
+        }
+    }
+
+    fn get_reg_u16(&mut self, reg: CpuRegister) -> u16 {
+        match reg {
+            CpuRegister::A => self.a as u16,
+            CpuRegister::B => self.b as u16,
+            CpuRegister::C => self.c as u16,
+            CpuRegister::D => self.d as u16,
+            CpuRegister::E => self.e as u16,
+            CpuRegister::H => self.h as u16,
+            CpuRegister::L => self.l as u16,
+            CpuRegister::F => self.f as u16,
+            CpuRegister::AF => self.af(),
+            CpuRegister::BC => self.bc(),
+            CpuRegister::DE => self.de(),
+            CpuRegister::HL => self.hl(),
+            CpuRegister::SP => self.sp,
+        }
+    }
+
+    fn set_reg_u16(&mut self, reg: CpuRegister, value: u16) {
+        match reg {
+            CpuRegister::AF => self.set_af(value),
+            CpuRegister::BC => self.set_bc(value),
+            CpuRegister::DE => self.set_de(value),
+            CpuRegister::HL => self.set_hl(value),
+            CpuRegister::SP => self.sp = value,
+            _ => panic!("tried to set u16 value of register {:?}", reg),
+        }
+    }
+
+    fn get_u8(&mut self, mmu: &mut Mmu, operand: InstructionOperand) -> u8 {
+        match operand {
+            InstructionOperand::Register(reg) => self.get_reg_u8(reg),
+            InstructionOperand::Immediate8(val) => val,
+            InstructionOperand::OffsetMemoryLocationRegister(offset, reg) => {
+                mmu.read(self.get_reg_u16(reg).wrapping_add(offset))
+            }
+            InstructionOperand::MemoryLocationRegister(reg) => mmu.read(self.get_reg_u16(reg)),
+            InstructionOperand::MemoryLocationRegisterDecrement(reg) => {
+                let value = mmu.read(self.get_reg_u16(reg));
+                let reg_value = self.get_reg_u16(reg).wrapping_sub(1);
+                self.set_reg_u16(reg, reg_value);
+                value
+            }
+            InstructionOperand::MemoryLocationRegisterIncrement(reg) => {
+                let value = mmu.read(self.get_reg_u16(reg));
+                let reg_value = self.get_reg_u16(reg).wrapping_add(1);
+                self.set_reg_u16(reg, reg_value);
+                value
+            }
+            InstructionOperand::MemoryLocationImmediate16(address) => mmu.read(address),
+            _ => panic!("tried to get u8 value of {:?}", &operand),
+        }
+    }
+
+    fn set_u8(&mut self, mmu: &mut Mmu, operand: InstructionOperand, value: u8) {
+        match operand {
+            InstructionOperand::Register(reg) => self.set_reg_u8(reg, value),
+            InstructionOperand::OffsetMemoryLocationRegister(offset, reg) => {
+                mmu.write(self.get_reg_u16(reg).wrapping_add(offset), value)
+            }
+            InstructionOperand::MemoryLocationRegister(reg) => {
+                mmu.write(self.get_reg_u16(reg), value)
+            }
+            InstructionOperand::MemoryLocationRegisterDecrement(reg) => {
+                mmu.write(self.get_reg_u16(reg), value);
+                let reg_value = self.get_reg_u16(reg).wrapping_sub(1);
+                self.set_reg_u16(reg, reg_value);
+            }
+            InstructionOperand::MemoryLocationRegisterIncrement(reg) => {
+                mmu.write(self.get_reg_u16(reg), value);
+                let reg_value = self.get_reg_u16(reg).wrapping_add(1);
+                self.set_reg_u16(reg, reg_value);
+            }
+            InstructionOperand::MemoryLocationImmediate16(address) => mmu.write(address, value),
+            _ => panic!("tried to set u8 value of {:?}", &operand),
+        }
+    }
+
+    pub fn exec_next_instruction(&mut self, mmu: &mut Mmu) -> usize {
+        let instruction = self.fetch_instruction(mmu).unwrap();
+        let cycles = instruction.cycles();
+
+        match instruction {
+            Instruction::Noop => {}
+            Instruction::Stop => todo!(),
+            Instruction::Load(to, from) => {
+                let val = self.get_u8(mmu, from);
+                self.set_u8(mmu, to, val);
+            }
+            Instruction::Xor(from) => {
+                self.a = self.a ^ self.get_u8(mmu, from);
+
+                self.set_flag(CpuFlag::Zero, self.a == 0);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, false);
+                self.set_flag(CpuFlag::Carry, false);
+            }
+            Instruction::Bit(bit, from) => {
+                let set = self.get_u8(mmu, from) & (1 << bit) != 0;
+
+                self.set_flag(CpuFlag::Zero, set);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, true);
+            }
+            Instruction::JumpRelative(_) => todo!(),
+            Instruction::JumpRelativeIf(_, _, _) => todo!(),
+            Instruction::Increment(_) => todo!(),
+            Instruction::Decrement(_) => todo!(),
+            Instruction::Call(_) => todo!(),
+            Instruction::Compare(_) => todo!(),
+            Instruction::Add(_, _) => todo!(),
+            Instruction::Subtract(_) => todo!(),
+            Instruction::Push(_) => todo!(),
+            Instruction::Pop(_) => todo!(),
+            Instruction::RotateLeft(_) => todo!(),
+            Instruction::Return => todo!(),
+        }
+
+        cycles
+    }
+
+    fn fetch_instruction(&mut self, mmu: &mut Mmu) -> Option<Instruction> {
         let opcode = self.fetch_u8(mmu);
 
         match opcode {
@@ -145,8 +319,8 @@ impl Cpu {
                 InstructionOperand::Register(CpuRegister::HL),
                 InstructionOperand::Immediate16(self.fetch_u16(mmu)),
             )),
-            0x22 => Some(Instruction::LoadMemInc(
-                CpuRegister::HL,
+            0x22 => Some(Instruction::Load(
+                InstructionOperand::MemoryLocationRegisterIncrement(CpuRegister::HL),
                 InstructionOperand::Register(CpuRegister::A),
             )),
             0x23 => Some(Instruction::Increment(InstructionOperand::Register(
@@ -168,8 +342,8 @@ impl Cpu {
                 InstructionOperand::Register(CpuRegister::SP),
                 InstructionOperand::Immediate16(self.fetch_u16(mmu)),
             )),
-            0x32 => Some(Instruction::LoadMemDec(
-                CpuRegister::HL,
+            0x32 => Some(Instruction::Load(
+                InstructionOperand::MemoryLocationRegisterDecrement(CpuRegister::HL),
                 InstructionOperand::Register(CpuRegister::A),
             )),
             0x3d => Some(Instruction::Decrement(InstructionOperand::Register(
