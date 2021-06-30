@@ -1,0 +1,9 @@
+[package]
+name = "gameboy"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+rand = "0.8.4"
+minifb = "0.19.3"
+bitflags = "1.2.1"
