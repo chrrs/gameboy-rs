@@ -3,8 +3,8 @@ use crate::cartridge::Cartridge;
 pub struct Mmu {
     bios: Option<&'static [u8]>,
     cart: Cartridge,
-
-    temp_ram: [u8; 0xffff],
+    wram: Box<[u8; 0x7fff]>,
+    hram: Box<[u8; 0x7e]>,
 }
 
 impl Mmu {
@@ -12,7 +12,8 @@ impl Mmu {
         Mmu {
             bios: Some(bios),
             cart,
-            temp_ram: [0; 0xffff],
+            wram: Box::new([0; 0x7fff]),
+            hram: Box::new([0; 0x7e]),
         }
     }
 
@@ -26,7 +27,10 @@ impl Mmu {
                 }
             }
             0x100..=0x7fff => self.cart.read(address),
-            _ => self.temp_ram[address as usize],
+            0xc000..=0xdfff => self.wram[address as usize % 0x1fff],
+            0xe000..=0xfdff => self.read(address - 0x2000),
+            0xff80..=0xfffe => self.hram[address as usize % 0x7f],
+            _ => panic!("tried to read from unmapped memory at {:#x}", address),
         }
     }
 
@@ -43,7 +47,10 @@ impl Mmu {
                 }
             }
             0x100..=0x7fff => self.cart.write(address, value),
-            _ => self.temp_ram[address as usize] = value,
+            0xc000..=0xdfff => self.wram[address as usize % 0x1fff] = value,
+            0xe000..=0xfdff => self.write(address - 0x2000, value),
+            0xff80..=0xfffe => self.hram[address as usize % 0x7f] = value,
+            _ => panic!("tried to write to unmapped memory at {:#x}", address),
         }
     }
 }
