@@ -253,7 +253,6 @@ impl Cpu {
 
         match instruction {
             Instruction::Noop => {}
-            Instruction::Stop => todo!(),
             Instruction::Load(to, from) => {
                 if to.is_16bit() {
                     let val = self.get_u16(mmu, from);
@@ -295,6 +294,10 @@ impl Cpu {
                 } else {
                     let val = self.get_u8(mmu, to).wrapping_add(1);
                     self.set_u8(mmu, to, val);
+
+                    self.set_flag(CpuFlag::Zero, val == 0);
+                    self.set_flag(CpuFlag::Subtraction, false);
+                    self.set_flag(CpuFlag::HalfCarry, val & 0x10 != 0);
                 }
             }
             Instruction::Decrement(to) => {
@@ -304,16 +307,13 @@ impl Cpu {
                 } else {
                     let val = self.get_u8(mmu, to).wrapping_sub(1);
                     self.set_u8(mmu, to, val);
+
+                    self.set_flag(CpuFlag::Zero, val == 0);
+                    self.set_flag(CpuFlag::Subtraction, true);
+                    self.set_flag(CpuFlag::HalfCarry, val & 0x10 != 0);
                 }
             }
-            Instruction::Call(_) => todo!(),
-            Instruction::Compare(_) => todo!(),
-            Instruction::Add(_, _) => todo!(),
-            Instruction::Subtract(_) => todo!(),
-            Instruction::Push(_) => todo!(),
-            Instruction::Pop(_) => todo!(),
-            Instruction::RotateLeft(_) => todo!(),
-            Instruction::Return => todo!(),
+            _ => panic!("unimplemented instruction {:x?}", instruction),
         }
 
         cycles
