@@ -3,6 +3,8 @@ use crate::cartridge::Cartridge;
 pub struct Mmu {
     bios: Option<&'static [u8]>,
     cart: Cartridge,
+
+    temp_ram: [u8; 0xffff],
 }
 
 impl Mmu {
@@ -10,6 +12,7 @@ impl Mmu {
         Mmu {
             bios: Some(bios),
             cart,
+            temp_ram: [0; 0xffff],
         }
     }
 
@@ -23,7 +26,7 @@ impl Mmu {
                 }
             }
             0x100..=0x7fff => self.cart.read(address),
-            _ => panic!("trying to read from unmapped address {:#x}", address),
+            _ => self.temp_ram[address as usize],
         }
     }
 
@@ -40,10 +43,7 @@ impl Mmu {
                 }
             }
             0x100..=0x7fff => self.cart.write(address, value),
-            _ => panic!(
-                "trying to write {:#x} to unmapped address {:#x}",
-                value, address
-            ),
+            _ => self.temp_ram[address as usize] = value,
         }
     }
 }
