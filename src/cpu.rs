@@ -249,7 +249,7 @@ impl Cpu {
     }
 
     pub fn exec_instruction(&mut self, mmu: &mut Mmu, instruction: Instruction) -> usize {
-        let cycles = instruction.cycles();
+        let mut cycles = instruction.cycles();
 
         match instruction {
             Instruction::Noop => {}
@@ -278,10 +278,34 @@ impl Cpu {
                 self.set_flag(CpuFlag::Subtraction, false);
                 self.set_flag(CpuFlag::HalfCarry, true);
             }
-            Instruction::JumpRelative(_) => todo!(),
-            Instruction::JumpRelativeIf(_, _, _) => todo!(),
-            Instruction::Increment(_) => todo!(),
-            Instruction::Decrement(_) => todo!(),
+            Instruction::JumpRelative(offset) => {
+                cycles += 1;
+                self.pc = self.pc.wrapping_add(offset as u16);
+            }
+            Instruction::JumpRelativeIf(flag, expected, offset) => {
+                if self.get_flag(flag) == expected {
+                    cycles += 1;
+                    self.pc = self.pc.wrapping_add(offset as u16);
+                }
+            }
+            Instruction::Increment(to) => {
+                if to.is_16bit() {
+                    let val = self.get_u16(mmu, to).wrapping_add(1);
+                    self.set_u16(to, val);
+                } else {
+                    let val = self.get_u8(mmu, to).wrapping_add(1);
+                    self.set_u8(mmu, to, val);
+                }
+            }
+            Instruction::Decrement(to) => {
+                if to.is_16bit() {
+                    let val = self.get_u16(mmu, to).wrapping_sub(1);
+                    self.set_u16(to, val);
+                } else {
+                    let val = self.get_u8(mmu, to).wrapping_sub(1);
+                    self.set_u8(mmu, to, val);
+                }
+            }
             Instruction::Call(_) => todo!(),
             Instruction::Compare(_) => todo!(),
             Instruction::Add(_, _) => todo!(),

@@ -37,7 +37,7 @@ impl CpuRegister {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum InstructionOperand {
     Register(CpuRegister),
     Immediate8(u8),
@@ -103,13 +103,47 @@ impl Instruction {
         match self {
             Instruction::Noop => 1,
             Instruction::Stop => 1,
-            Instruction::Load(to, from) => 1 + to.cycles() + from.cycles(),
-            Instruction::Xor(_) => todo!(),
-            Instruction::Bit(_, _) => todo!(),
-            Instruction::JumpRelative(_) => todo!(),
-            Instruction::JumpRelativeIf(_, _, _) => todo!(),
-            Instruction::Increment(_) => todo!(),
-            Instruction::Decrement(_) => todo!(),
+            Instruction::Load(to, from) => {
+                1 + to.cycles() + from.cycles() + if to.is_16bit() { 1 } else { 0 }
+            }
+            Instruction::Xor(from) => 1 + from.cycles(),
+            Instruction::Bit(_, from) => 2 + from.cycles(),
+            Instruction::JumpRelative(_) => 2,
+            Instruction::JumpRelativeIf(_, _, _) => 2,
+            Instruction::Increment(to) => {
+                1 + match to {
+                    InstructionOperand::Register(reg) => {
+                        if reg.is_16bit() {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    InstructionOperand::OffsetMemoryLocationRegister(_, _) => 1,
+                    InstructionOperand::MemoryLocationRegister(_) => 2,
+                    InstructionOperand::MemoryLocationRegisterDecrement(_) => 2,
+                    InstructionOperand::MemoryLocationRegisterIncrement(_) => 2,
+                    InstructionOperand::MemoryLocationImmediate16(_) => 2,
+                    _ => 0,
+                }
+            }
+            Instruction::Decrement(to) => {
+                1 + match to {
+                    InstructionOperand::Register(reg) => {
+                        if reg.is_16bit() {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    InstructionOperand::OffsetMemoryLocationRegister(_, _) => 1,
+                    InstructionOperand::MemoryLocationRegister(_) => 2,
+                    InstructionOperand::MemoryLocationRegisterDecrement(_) => 2,
+                    InstructionOperand::MemoryLocationRegisterIncrement(_) => 2,
+                    InstructionOperand::MemoryLocationImmediate16(_) => 2,
+                    _ => 0,
+                }
+            }
             Instruction::Call(_) => todo!(),
             Instruction::Compare(_) => todo!(),
             Instruction::Add(_, _) => todo!(),

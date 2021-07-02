@@ -1,6 +1,11 @@
 use std::fs::File;
 
-use gameboy::{bios::DMG_BIOS, cartridge::Cartridge, cpu::Cpu, mmu::Mmu};
+use gameboy::{
+    bios::DMG_BIOS,
+    cartridge::Cartridge,
+    cpu::{Cpu, CpuFlag},
+    mmu::Mmu,
+};
 
 fn main() {
     let cart = Cartridge::new(File::open("./roms/blargg/cpu_instrs.gb").unwrap()).unwrap();
@@ -14,8 +19,13 @@ fn main() {
         let pc = cpu.pc;
         let instruction = cpu.fetch_instruction(&mut mmu).unwrap();
         println!(
-            "A:{:#x} B:{:#x} C:{:#x} D:{:#x} E:{:#x} H:{:#x} L:{:#x} F:{:#x} SP:{:#06x} PC:{:#06x}, Executing {:x?}",
-            cpu.a, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.f, cpu.sp, pc, instruction
+            "A:{:#x} B:{:#x} C:{:#x} D:{:#x} E:{:#x} H:{:#x} L:{:#x} F:{}{}{}{} SP:{:#06x} PC:{:#06x}, Executing {:x?}",
+            cpu.a, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, 
+            if cpu.get_flag(CpuFlag::Zero) {"Z"} else {"-"}, 
+            if cpu.get_flag(CpuFlag::Subtraction) {"S"} else {"-"}, 
+            if cpu.get_flag(CpuFlag::HalfCarry) {"H"} else {"-"}, 
+            if cpu.get_flag(CpuFlag::Carry) {"C"} else {"-"}, 
+            cpu.sp, pc, instruction
         );
         cpu.exec_instruction(&mut mmu, instruction);
     }
