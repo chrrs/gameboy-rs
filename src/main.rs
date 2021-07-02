@@ -11,10 +11,11 @@ fn main() {
     let mut cpu = Cpu::new();
 
     while cpu.pc <= 0x100 {
+        let pc = cpu.pc;
         let instruction = cpu.fetch_instruction(&mut mmu).unwrap();
         println!(
-            "A:{:#x} B:{:#x} C:{:#x} D:{:#x} E:{:#x} H:{:#x} L:{:#x} F:{:#x}, Executing {:x?}",
-            cpu.a, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.f, instruction
+            "A:{:#x} B:{:#x} C:{:#x} D:{:#x} E:{:#x} H:{:#x} L:{:#x} F:{:#x} SP:{:#06x} PC:{:#06x}, Executing {:x?}",
+            cpu.a, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.f, cpu.sp, pc, instruction
         );
         cpu.exec_instruction(&mut mmu, instruction);
     }
