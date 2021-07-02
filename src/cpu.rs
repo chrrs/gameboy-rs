@@ -209,6 +209,40 @@ impl Cpu {
         }
     }
 
+    fn get_u16(&mut self, mmu: &mut Mmu, operand: InstructionOperand) -> u16 {
+        match operand {
+            InstructionOperand::Register(reg) => self.get_reg_u16(reg),
+            InstructionOperand::Immediate8(val) => val as u16,
+            InstructionOperand::Immediate16(val) => val,
+            InstructionOperand::OffsetMemoryLocationRegister(offset, reg) => {
+                mmu.read(self.get_reg_u16(reg).wrapping_add(offset)) as u16
+            }
+            InstructionOperand::MemoryLocationRegister(reg) => {
+                mmu.read(self.get_reg_u16(reg)) as u16
+            }
+            InstructionOperand::MemoryLocationRegisterDecrement(reg) => {
+                let value = mmu.read(self.get_reg_u16(reg)) as u16;
+                let reg_value = self.get_reg_u16(reg).wrapping_sub(1);
+                self.set_reg_u16(reg, reg_value);
+                value
+            }
+            InstructionOperand::MemoryLocationRegisterIncrement(reg) => {
+                let value = mmu.read(self.get_reg_u16(reg)) as u16;
+                let reg_value = self.get_reg_u16(reg).wrapping_add(1);
+                self.set_reg_u16(reg, reg_value);
+                value
+            }
+            InstructionOperand::MemoryLocationImmediate16(address) => mmu.read(address) as u16,
+        }
+    }
+
+    fn set_u16(&mut self, operand: InstructionOperand, value: u16) {
+        match operand {
+            InstructionOperand::Register(reg) => self.set_reg_u16(reg, value),
+            _ => panic!("tried to set u16 value of {:?}", &operand),
+        }
+    }
+
     pub fn exec_next_instruction(&mut self, mmu: &mut Mmu) -> usize {
         let instruction = self.fetch_instruction(mmu).unwrap();
         self.exec_instruction(mmu, instruction)
@@ -221,8 +255,13 @@ impl Cpu {
             Instruction::Noop => {}
             Instruction::Stop => todo!(),
             Instruction::Load(to, from) => {
-                let val = self.get_u8(mmu, from);
-                self.set_u8(mmu, to, val);
+                if to.is_16bit() {
+                    let val = self.get_u16(mmu, from);
+                    self.set_u16(to, val);
+                } else {
+                    let val = self.get_u8(mmu, from);
+                    self.set_u8(mmu, to, val);
+                }
             }
             Instruction::Xor(from) => {
                 self.a = self.a ^ self.get_u8(mmu, from);

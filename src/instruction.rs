@@ -17,6 +17,26 @@ pub enum CpuRegister {
     SP,
 }
 
+impl CpuRegister {
+    pub fn is_16bit(&self) -> bool {
+        match self {
+            CpuRegister::A => false,
+            CpuRegister::B => false,
+            CpuRegister::C => false,
+            CpuRegister::D => false,
+            CpuRegister::E => false,
+            CpuRegister::H => false,
+            CpuRegister::L => false,
+            CpuRegister::F => false,
+            CpuRegister::AF => true,
+            CpuRegister::BC => true,
+            CpuRegister::DE => true,
+            CpuRegister::HL => true,
+            CpuRegister::SP => true,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum InstructionOperand {
     Register(CpuRegister),
@@ -30,6 +50,19 @@ pub enum InstructionOperand {
 }
 
 impl InstructionOperand {
+    pub fn is_16bit(&self) -> bool {
+        match self {
+            InstructionOperand::Register(reg) => reg.is_16bit(),
+            InstructionOperand::Immediate8(_) => false,
+            InstructionOperand::Immediate16(_) => true,
+            InstructionOperand::OffsetMemoryLocationRegister(_, _) => false,
+            InstructionOperand::MemoryLocationRegister(_) => false,
+            InstructionOperand::MemoryLocationRegisterDecrement(_) => false,
+            InstructionOperand::MemoryLocationRegisterIncrement(_) => false,
+            InstructionOperand::MemoryLocationImmediate16(_) => false,
+        }
+    }
+
     pub fn cycles(&self) -> usize {
         match self {
             InstructionOperand::Register(_) => 0,
