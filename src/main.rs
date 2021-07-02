@@ -28,5 +28,8 @@ fn main() {
             cpu.sp, pc, instruction
         );
         cpu.exec_instruction(&mut mmu, instruction);
+
+        let t = mmu.read(0xff44);
+        mmu.write(0xff44, (t + 1) % 154);
     }
 }

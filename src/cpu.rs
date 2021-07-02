@@ -368,6 +368,18 @@ impl Cpu {
                 let value = self.get_u8(mmu, to);
                 self.set_flag(CpuFlag::Zero, value == self.a);
             }
+            Instruction::Subtract(from) => {
+                let carry = self.get_flag(CpuFlag::Carry) as u8;
+                let value = self.get_u8(mmu, from);
+
+                let (result, overflow) = self.a.overflowing_sub(value.wrapping_add(carry));
+                self.a = result;
+
+                self.set_flag(CpuFlag::Zero, self.a == 0);
+                self.set_flag(CpuFlag::Subtraction, true);
+                self.set_flag(CpuFlag::HalfCarry, self.a & 0x10 != 0);
+                self.set_flag(CpuFlag::Carry, overflow);
+            }
             _ => panic!("unimplemented instruction {:x?}", instruction),
         }
 

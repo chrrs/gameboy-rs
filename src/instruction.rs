@@ -140,7 +140,7 @@ impl Instruction {
             Instruction::Call(_) => 6,
             Instruction::Compare(to) => 1 + to.cycles(false),
             Instruction::Add(_, _) => todo!(),
-            Instruction::Subtract(_) => todo!(),
+            Instruction::Subtract(from) => 1 + from.cycles(false),
             Instruction::Push(_) => 4,
             Instruction::Pop(_) => 3,
             Instruction::RotateLeftA => 1,
