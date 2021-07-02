@@ -1,3 +1,5 @@
+use std::u8;
+
 use crate::{
     instruction::{CpuRegister, Instruction, InstructionOperand},
     mmu::Mmu,
@@ -97,6 +99,25 @@ impl Cpu {
         } else {
             self.f &= !flag.bit()
         }
+    }
+
+    pub fn pop_u16(&mut self, mmu: &mut Mmu) -> u16 {
+        let lo = mmu.read(self.sp);
+        self.sp = self.sp.wrapping_add(1);
+        let hi = mmu.read(self.sp);
+        self.sp = self.sp.wrapping_add(1);
+
+        (hi as u16) << 8 | (lo as u16)
+    }
+
+    pub fn push_u16(&mut self, mmu: &mut Mmu, value: u16) {
+        let hi = (value >> 8) as u8;
+        let lo = value as u8;
+
+        self.sp = self.sp.wrapping_sub(1);
+        mmu.write(self.sp, hi);
+        self.sp = self.sp.wrapping_sub(1);
+        mmu.write(self.sp, lo);
     }
 
     fn get_reg_u8(&mut self, reg: CpuRegister) -> u8 {
@@ -278,7 +299,6 @@ impl Cpu {
                 self.set_flag(CpuFlag::HalfCarry, true);
             }
             Instruction::JumpRelative(offset) => {
-                cycles += 1;
                 self.pc = self.pc.wrapping_add(offset as u16);
             }
             Instruction::JumpRelativeIf(flag, expected, offset) => {
@@ -312,6 +332,41 @@ impl Cpu {
                     self.set_flag(CpuFlag::Subtraction, true);
                     self.set_flag(CpuFlag::HalfCarry, val & 0x10 != 0);
                 }
+            }
+            Instruction::Call(address) => {
+                self.push_u16(mmu, self.pc);
+                self.pc = address;
+            }
+            Instruction::Push(reg) => {
+                let value = self.get_reg_u16(reg);
+                self.push_u16(mmu, value)
+            }
+            Instruction::Pop(reg) => {
+                let value = self.pop_u16(mmu);
+                self.set_reg_u16(reg, value);
+            }
+            Instruction::ExtendedRotateLeft(to) => {
+                let carry = self.get_flag(CpuFlag::Carry) as u8;
+                let previous = self.get_u8(mmu, to);
+
+                self.set_flag(CpuFlag::Carry, previous & 0x80 != 0);
+
+                let value = previous << 1 | carry;
+                self.set_u8(mmu, to, value);
+
+                self.set_flag(CpuFlag::Zero, value == 0);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, false);
+            }
+            Instruction::RotateLeftA => {
+                let carry = self.get_flag(CpuFlag::Carry) as u8;
+                self.set_flag(CpuFlag::Carry, self.a & 0x80 != 0);
+                self.a = self.a << 1 | carry;
+            }
+            Instruction::Return => self.pc = self.pop_u16(mmu),
+            Instruction::Compare(to) => {
+                let value = self.get_u8(mmu, to);
+                self.set_flag(CpuFlag::Zero, value == self.a);
             }
             _ => panic!("unimplemented instruction {:x?}", instruction),
         }
@@ -362,9 +417,7 @@ impl Cpu {
                 InstructionOperand::Register(CpuRegister::D),
                 InstructionOperand::Immediate8(self.fetch_u8(mmu)),
             )),
-            0x17 => Some(Instruction::RotateLeft(InstructionOperand::Register(
-                CpuRegister::A,
-            ))),
+            0x17 => Some(Instruction::RotateLeftA),
             0x18 => Some(Instruction::JumpRelative(self.fetch_u8(mmu) as i8)),
             0x1a => Some(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::A),
@@ -500,9 +553,9 @@ impl Cpu {
         let opcode = self.fetch_u8(mmu);
 
         match opcode {
-            0x11 => Some(Instruction::RotateLeft(InstructionOperand::Register(
-                CpuRegister::C,
-            ))),
+            0x11 => Some(Instruction::ExtendedRotateLeft(
+                InstructionOperand::Register(CpuRegister::C),
+            )),
             0x7c => Some(Instruction::Bit(
                 7,
                 InstructionOperand::Register(CpuRegister::H),

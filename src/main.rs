@@ -19,7 +19,7 @@ fn main() {
         let pc = cpu.pc;
         let instruction = cpu.fetch_instruction(&mut mmu).unwrap();
         println!(
-            "A:{:#x} B:{:#x} C:{:#x} D:{:#x} E:{:#x} H:{:#x} L:{:#x} F:{}{}{}{} SP:{:#06x} PC:{:#06x}, Executing {:x?}",
+            "A:{:#04x} B:{:#04x} C:{:#04x} D:{:#04x} E:{:#04x} H:{:#04x} L:{:#04x} F:{}{}{}{} SP:{:#06x} PC:{:#06x}, Executing {:x?}",
             cpu.a, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, 
             if cpu.get_flag(CpuFlag::Zero) {"Z"} else {"-"}, 
             if cpu.get_flag(CpuFlag::Subtraction) {"S"} else {"-"}, 

@@ -63,15 +63,39 @@ impl InstructionOperand {
         }
     }
 
-    pub fn cycles(&self) -> usize {
+    pub fn cycles(&self, affect_16bit_reg: bool) -> usize {
         match self {
-            InstructionOperand::Register(_) => 0,
+            InstructionOperand::Register(reg) => {
+                if affect_16bit_reg && reg.is_16bit() {
+                    1
+                } else {
+                    0
+                }
+            }
             InstructionOperand::Immediate8(_) => 1,
             InstructionOperand::Immediate16(_) => 2,
             InstructionOperand::OffsetMemoryLocationRegister(_, _) => 2,
-            InstructionOperand::MemoryLocationRegister(_) => 1,
-            InstructionOperand::MemoryLocationRegisterDecrement(_) => 1,
-            InstructionOperand::MemoryLocationRegisterIncrement(_) => 1,
+            InstructionOperand::MemoryLocationRegister(reg) => {
+                if affect_16bit_reg && reg.is_16bit() {
+                    2
+                } else {
+                    1
+                }
+            }
+            InstructionOperand::MemoryLocationRegisterDecrement(reg) => {
+                if affect_16bit_reg && reg.is_16bit() {
+                    2
+                } else {
+                    1
+                }
+            }
+            InstructionOperand::MemoryLocationRegisterIncrement(reg) => {
+                if affect_16bit_reg && reg.is_16bit() {
+                    2
+                } else {
+                    1
+                }
+            }
             InstructionOperand::MemoryLocationImmediate16(_) => 3,
         }
     }
@@ -94,7 +118,8 @@ pub enum Instruction {
     Subtract(InstructionOperand),
     Push(CpuRegister),
     Pop(CpuRegister),
-    RotateLeft(InstructionOperand),
+    RotateLeftA,
+    ExtendedRotateLeft(InstructionOperand),
     Return,
 }
 
@@ -104,54 +129,23 @@ impl Instruction {
             Instruction::Noop => 1,
             Instruction::Stop => 1,
             Instruction::Load(to, from) => {
-                1 + to.cycles() + from.cycles() + if to.is_16bit() { 1 } else { 0 }
+                1 + to.cycles(false) + from.cycles(false) + if to.is_16bit() { 1 } else { 0 }
             }
-            Instruction::Xor(from) => 1 + from.cycles(),
-            Instruction::Bit(_, from) => 2 + from.cycles(),
-            Instruction::JumpRelative(_) => 2,
+            Instruction::Xor(from) => 1 + from.cycles(false),
+            Instruction::Bit(_, from) => 2 + from.cycles(false),
+            Instruction::JumpRelative(_) => 3,
             Instruction::JumpRelativeIf(_, _, _) => 2,
-            Instruction::Increment(to) => {
-                1 + match to {
-                    InstructionOperand::Register(reg) => {
-                        if reg.is_16bit() {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                    InstructionOperand::OffsetMemoryLocationRegister(_, _) => 1,
-                    InstructionOperand::MemoryLocationRegister(_) => 2,
-                    InstructionOperand::MemoryLocationRegisterDecrement(_) => 2,
-                    InstructionOperand::MemoryLocationRegisterIncrement(_) => 2,
-                    InstructionOperand::MemoryLocationImmediate16(_) => 2,
-                    _ => 0,
-                }
-            }
-            Instruction::Decrement(to) => {
-                1 + match to {
-                    InstructionOperand::Register(reg) => {
-                        if reg.is_16bit() {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                    InstructionOperand::OffsetMemoryLocationRegister(_, _) => 1,
-                    InstructionOperand::MemoryLocationRegister(_) => 2,
-                    InstructionOperand::MemoryLocationRegisterDecrement(_) => 2,
-                    InstructionOperand::MemoryLocationRegisterIncrement(_) => 2,
-                    InstructionOperand::MemoryLocationImmediate16(_) => 2,
-                    _ => 0,
-                }
-            }
-            Instruction::Call(_) => todo!(),
-            Instruction::Compare(_) => todo!(),
+            Instruction::Increment(to) => 1 + to.cycles(true),
+            Instruction::Decrement(to) => 1 + to.cycles(true),
+            Instruction::Call(_) => 6,
+            Instruction::Compare(to) => 1 + to.cycles(false),
             Instruction::Add(_, _) => todo!(),
             Instruction::Subtract(_) => todo!(),
-            Instruction::Push(_) => todo!(),
-            Instruction::Pop(_) => todo!(),
-            Instruction::RotateLeft(_) => todo!(),
-            Instruction::Return => todo!(),
+            Instruction::Push(_) => 4,
+            Instruction::Pop(_) => 3,
+            Instruction::RotateLeftA => 1,
+            Instruction::ExtendedRotateLeft(to) => 2 + to.cycles(true),
+            Instruction::Return => 4,
         }
     }
 }
