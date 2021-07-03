@@ -79,8 +79,6 @@ fn main() {
         Event::RedrawRequested(_) => {
             let ui = imgui.frame();
 
-            ui.show_demo_window(&mut true);
-
             Window::new(im_str!("CPU State")).build(&ui, || {
                 let flag_color = |set| {
                     if set {
@@ -114,6 +112,12 @@ fn main() {
                 ui.text(format!("BC: {0:#06x} ({0})", device.cpu().bc()));
                 ui.text(format!("DE: {0:#06x} ({0})", device.cpu().de()));
                 ui.text(format!("HL: {0:#06x} ({0})", device.cpu().hl()));
+
+                ui.separator();
+
+                if ui.button(im_str!("Reset device"), [0.0, 0.0]) {
+                    device.reset();
+                }
             });
 
             Window::new(im_str!("Disassembly")).build(&ui, || {

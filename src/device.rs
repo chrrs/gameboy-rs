@@ -37,4 +37,8 @@ impl Device {
         let Device { cpu, mmu } = self;
         cpu.disassemble(mmu, max)
     }
+
+    pub fn reset(&mut self) {
+        self.cpu.pc = 0;
+    }
 }
