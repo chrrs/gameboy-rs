@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{fs::File, ptr::null};
 
 use clap::{App, Arg};
 use gameboy::{cartridge::Cartridge, cpu::CpuFlag, device::Device};
@@ -12,7 +12,11 @@ use glium::{
     },
     Display, Surface,
 };
-use imgui::{im_str, Context, FontConfig, FontSource, ImString, Key, Selectable, Window};
+use imgui::{
+    im_str,
+    sys::{igBeginPopupContextItem, igEndPopup},
+    Context, FontConfig, FontSource, ImString, Key, MenuItem, Selectable, Window,
+};
 use imgui_glium_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
@@ -121,14 +125,30 @@ fn main() {
             });
 
             Window::new(im_str!("Disassembly")).build(&ui, || {
+                let pc_bound = device.cpu().pc.saturating_sub(20);
+
                 disassembly
                     .iter()
-                    .skip_while(|(addr, _)| **addr < device.cpu().pc.saturating_sub(20))
+                    .skip_while(|(addr, _)| **addr < pc_bound)
                     .take(0x1000)
                     .for_each(|(addr, instruction)| {
                         Selectable::new(&ImString::new(format!("{:#06x}: {}", addr, instruction)))
                             .selected(&device.cpu().pc == addr)
                             .build(&ui);
+
+                        if unsafe { igBeginPopupContextItem(null(), 0) } {
+                            if MenuItem::new(im_str!("Jump to here")).build(&ui) {
+                                device.cpu_mut().pc = *addr;
+                            }
+
+                            if MenuItem::new(im_str!("Run to here")).build(&ui) {
+                                while device.cpu_mut().pc != *addr {
+                                    device.step();
+                                }
+                            }
+
+                            unsafe { igEndPopup() };
+                        }
                     });
             });
 
