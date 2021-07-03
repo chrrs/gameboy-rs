@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::cpu::CpuFlag;
 
 #[derive(Debug, Clone, Copy)]
@@ -33,6 +35,26 @@ impl CpuRegister {
             CpuRegister::DE => true,
             CpuRegister::HL => true,
             CpuRegister::SP => true,
+        }
+    }
+}
+
+impl fmt::Display for CpuRegister {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CpuRegister::A => write!(f, "A"),
+            CpuRegister::B => write!(f, "B"),
+            CpuRegister::C => write!(f, "C"),
+            CpuRegister::D => write!(f, "D"),
+            CpuRegister::E => write!(f, "E"),
+            CpuRegister::H => write!(f, "H"),
+            CpuRegister::L => write!(f, "L"),
+            CpuRegister::F => write!(f, "F"),
+            CpuRegister::AF => write!(f, "AF"),
+            CpuRegister::BC => write!(f, "BC"),
+            CpuRegister::DE => write!(f, "DE"),
+            CpuRegister::HL => write!(f, "HL"),
+            CpuRegister::SP => write!(f, "SP"),
         }
     }
 }
@@ -101,6 +123,25 @@ impl InstructionOperand {
     }
 }
 
+impl fmt::Display for InstructionOperand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InstructionOperand::Register(reg) => reg.fmt(f),
+            InstructionOperand::Immediate8(value) => write!(f, "{:#04x}", value),
+            InstructionOperand::Immediate16(value) => write!(f, "{:#06x}", value),
+            InstructionOperand::OffsetMemoryLocationRegister(offset, reg) => {
+                write!(f, "({:#06x}+{})", offset, reg)
+            }
+            InstructionOperand::MemoryLocationRegister(reg) => write!(f, "({})", reg),
+            InstructionOperand::MemoryLocationRegisterDecrement(reg) => write!(f, "({}-)", reg),
+            InstructionOperand::MemoryLocationRegisterIncrement(reg) => write!(f, "({}+)", reg),
+            InstructionOperand::MemoryLocationImmediate16(address) => {
+                write!(f, "({:#06x})", address)
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Instruction {
     Noop,
@@ -148,6 +189,39 @@ impl Instruction {
             Instruction::RotateLeftA => 1,
             Instruction::ExtendedRotateLeft(to) => 2 + to.cycles(true),
             Instruction::Return => 4,
+        }
+    }
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Instruction::Noop => write!(f, "noop"),
+            Instruction::Stop => write!(f, "stop"),
+            Instruction::Load(to, from) => write!(f, "ld {}, {}", to, from),
+            Instruction::Xor(from) => write!(f, "xor {}", from),
+            Instruction::Bit(bit, from) => write!(f, "bit {}, {}", bit, from),
+            Instruction::JumpRelative(offset) => write!(f, "jr {}", offset),
+            Instruction::JumpRelativeIf(flag, expected, offset) => {
+                write!(
+                    f,
+                    "jr {}{}, {}",
+                    if *expected { "" } else { "N" },
+                    flag,
+                    offset
+                )
+            }
+            Instruction::Increment(to) => write!(f, "inc {}", to),
+            Instruction::Decrement(to) => write!(f, "dec {}", to),
+            Instruction::Call(address) => write!(f, "call {:#06x}", address),
+            Instruction::Compare(from) => write!(f, "cp {}", from),
+            Instruction::Add(to, from) => write!(f, "add {}, {}", to, from),
+            Instruction::Subtract(from) => write!(f, "sub {}", from),
+            Instruction::Push(from) => write!(f, "push {}", from),
+            Instruction::Pop(from) => write!(f, "pop {}", from),
+            Instruction::RotateLeftA => write!(f, "rla"),
+            Instruction::ExtendedRotateLeft(to) => write!(f, "rl {}", to),
+            Instruction::Return => write!(f, "ret"),
         }
     }
 }

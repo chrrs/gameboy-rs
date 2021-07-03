@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, u8};
+use std::{collections::BTreeMap, fmt, u8};
 
 use crate::{
     instruction::{CpuRegister, Instruction, InstructionOperand},
@@ -20,6 +20,17 @@ impl CpuFlag {
             CpuFlag::Subtraction => 1 << 6,
             CpuFlag::HalfCarry => 1 << 5,
             CpuFlag::Carry => 1 << 4,
+        }
+    }
+}
+
+impl fmt::Display for CpuFlag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CpuFlag::Zero => write!(f, "Z"),
+            CpuFlag::Subtraction => write!(f, "S"),
+            CpuFlag::HalfCarry => write!(f, "H"),
+            CpuFlag::Carry => write!(f, "C"),
         }
     }
 }
@@ -595,10 +606,7 @@ impl Cpu {
             0xfe => Some(Instruction::Compare(InstructionOperand::Immediate8(
                 self.fetch_u8(mmu),
             ))),
-            _ => {
-                println!("Unknown instruction for opcode {:#04x}", opcode);
-                None
-            }
+            _ => None,
         }
     }
 
@@ -613,10 +621,7 @@ impl Cpu {
                 7,
                 InstructionOperand::Register(CpuRegister::H),
             )),
-            _ => {
-                println!("Unknown instruction for opcode 0xcb {:#04x}", opcode);
-                None
-            }
+            _ => None,
         }
     }
 
@@ -640,7 +645,11 @@ impl Cpu {
         let mut pc = 0;
         while !res.contains_key(&pc) && pc < max {
             let instruction = self.fetch_instruction(mmu);
-            res.insert(pc, format!("{:x?}", instruction));
+            if let Some(instruction) = instruction {
+                res.insert(pc, format!("{}", instruction));
+            } else {
+                res.insert(pc, "<unknown>".to_string());
+            }
             pc = self.pc;
         }
 

@@ -103,6 +103,13 @@ fn main() {
                 ui.text(format!("PC: {:#06x}", device.cpu().pc));
                 ui.text(format!("SP: {:#06x}", device.cpu().sp));
                 ui.spacing();
+                ui.text(format!("Scanline: {}", device.gpu().scanline()));
+                ui.text(format!(
+                    "Scroll: {}, {}",
+                    device.gpu().scroll_x,
+                    device.gpu().scroll_y
+                ));
+                ui.spacing();
                 ui.text(format!("AF: {0:#06x} ({0})", device.cpu().af()));
                 ui.text(format!("BC: {0:#06x} ({0})", device.cpu().bc()));
                 ui.text(format!("DE: {0:#06x} ({0})", device.cpu().de()));
@@ -110,11 +117,15 @@ fn main() {
             });
 
             Window::new(im_str!("Disassembly")).build(&ui, || {
-                for (addr, instruction) in &disassembly {
-                    Selectable::new(&ImString::new(format!("{:#06x}: {}", addr, instruction)))
-                        .selected(&device.cpu().pc == addr)
-                        .build(&ui);
-                }
+                disassembly
+                    .iter()
+                    .skip_while(|(addr, _)| **addr < device.cpu().pc.saturating_sub(20))
+                    .take(0x1000)
+                    .for_each(|(addr, instruction)| {
+                        Selectable::new(&ImString::new(format!("{:#06x}: {}", addr, instruction)))
+                            .selected(&device.cpu().pc == addr)
+                            .build(&ui);
+                    });
             });
 
             let gl_window = display.gl_window();
