@@ -369,16 +369,57 @@ impl Cpu {
                 self.set_flag(CpuFlag::Zero, value == self.a);
             }
             Instruction::Subtract(from) => {
-                let carry = self.get_flag(CpuFlag::Carry) as u8;
+                let carry = 0; //self.get_flag(CpuFlag::Carry) as u8;
                 let value = self.get_u8(mmu, from);
+                let previous = self.a;
 
-                let (result, overflow) = self.a.overflowing_sub(value.wrapping_add(carry));
-                self.a = result;
+                self.a = self.a.wrapping_sub(value).wrapping_sub(carry);
 
                 self.set_flag(CpuFlag::Zero, self.a == 0);
                 self.set_flag(CpuFlag::Subtraction, true);
                 self.set_flag(CpuFlag::HalfCarry, self.a & 0x10 != 0);
-                self.set_flag(CpuFlag::Carry, overflow);
+                self.set_flag(
+                    CpuFlag::Carry,
+                    (self.a > previous) || (carry == 1 && self.a == previous),
+                );
+            }
+            Instruction::Add(to, from) => {
+                let carry = 0; //self.get_flag(CpuFlag::Carry) as u8;
+
+                if to.is_16bit() {
+                    let value = self.get_reg_u16(to);
+                    let result = value
+                        .wrapping_add(self.get_u16(mmu, from))
+                        .wrapping_add(carry as u16);
+
+                    self.set_reg_u16(to, result);
+
+                    self.set_flag(CpuFlag::Subtraction, false);
+                    self.set_flag(CpuFlag::HalfCarry, result & 0x10 != 0);
+                    self.set_flag(
+                        CpuFlag::Carry,
+                        (value < result) || (carry == 1 && value == result),
+                    );
+
+                    if let CpuRegister::SP = to {
+                        self.set_flag(CpuFlag::Zero, false);
+                    }
+                } else {
+                    let value = self.get_reg_u8(to);
+                    let result = value
+                        .wrapping_add(self.get_u8(mmu, from))
+                        .wrapping_add(carry);
+
+                    self.set_reg_u8(to, result);
+
+                    self.set_flag(CpuFlag::Zero, result == 0);
+                    self.set_flag(CpuFlag::Subtraction, false);
+                    self.set_flag(CpuFlag::HalfCarry, result & 0x10 != 0);
+                    self.set_flag(
+                        CpuFlag::Carry,
+                        (value < result) || (carry == 1 && value == result),
+                    );
+                }
             }
             _ => panic!("unimplemented instruction {:x?}", instruction),
         }

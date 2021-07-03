@@ -139,7 +139,9 @@ impl Instruction {
             Instruction::Decrement(to) => 1 + to.cycles(true),
             Instruction::Call(_) => 6,
             Instruction::Compare(to) => 1 + to.cycles(false),
-            Instruction::Add(_, _) => todo!(),
+            Instruction::Add(to, from) => {
+                1 + from.cycles(false) + if to.is_16bit() { 1 } else { 0 }
+            }
             Instruction::Subtract(from) => 1 + from.cycles(false),
             Instruction::Push(_) => 4,
             Instruction::Pop(_) => 3,
