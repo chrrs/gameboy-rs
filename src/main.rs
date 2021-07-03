@@ -12,7 +12,7 @@ use glium::{
     },
     Display, Surface,
 };
-use imgui::{im_str, Context, FontConfig, FontSource, ImString, Selectable, Window};
+use imgui::{im_str, Context, FontConfig, FontSource, ImString, Key, Selectable, Window};
 use imgui_glium_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
@@ -127,6 +127,10 @@ fn main() {
                             .build(&ui);
                     });
             });
+
+            if ui.is_key_pressed(Key::Enter) {
+                device.step();
+            }
 
             let gl_window = display.gl_window();
             let mut target = display.draw();
