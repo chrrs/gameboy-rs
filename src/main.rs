@@ -1,41 +1,137 @@
 use std::fs::File;
 
-use gameboy::{
-    bios::DMG_BIOS,
-    cartridge::Cartridge,
-    cpu::{Cpu, CpuFlag},
-    gpu::Gpu,
-    mmu::Mmu,
+use clap::{App, Arg};
+use gameboy::{cartridge::Cartridge, cpu::CpuFlag, device::Device};
+use glium::{
+    glutin::{
+        dpi::LogicalSize,
+        event::{Event, WindowEvent},
+        event_loop::{ControlFlow, EventLoop},
+        window::WindowBuilder,
+        ContextBuilder,
+    },
+    Display, Surface,
 };
+use imgui::{im_str, Context, FontConfig, FontSource, ImString, Selectable, Window};
+use imgui_glium_renderer::Renderer;
+use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
 fn main() {
-    let cart = Cartridge::new(File::open("./roms/Tetris.gb").unwrap()).unwrap();
-    println!("Valid cart? {}", cart.verify());
-    println!("Cart title: {}", cart.title().unwrap_or("<unknown>"));
+    let matches = App::new("gameboy")
+        .about("A simple non-color gameboy emulator")
+        .arg(
+            Arg::new("rom")
+                .index(1)
+                .required(true)
+                .about("The gameboy ROM file to load"),
+        )
+        .arg(
+            Arg::new("debug")
+                .short('d')
+                .long("debug")
+                .about("Activates the extra debugging window"),
+        )
+        .get_matches();
 
-    let mut cpu = Cpu::new();
-    let mut mmu = Mmu::new(DMG_BIOS, cart, Gpu::new());
+    let cart = Cartridge::new(File::open(matches.value_of("rom").unwrap()).unwrap()).unwrap();
+    let mut device = Device::new(cart);
 
-    let mut print = false;
-    while cpu.pc <= 0x100 {
-        let pc = cpu.pc;
-        let instruction = cpu.fetch_instruction(&mut mmu).unwrap();
+    let disassembly = device.disassemble(0x8000);
 
-        print = cpu.pc >= 0xf4 && cpu.pc <= 0xfa;
+    let event_loop = EventLoop::new();
+    let context = ContextBuilder::new().with_vsync(true);
+    let builder = WindowBuilder::new()
+        .with_title(device.cart().title().unwrap_or("gameboy"))
+        .with_inner_size(LogicalSize::new(800, 600));
+    let display = Display::new(builder, context, &event_loop).unwrap();
 
-        if print {
-            println!(
-            "A:{:#04x} B:{:#04x} C:{:#04x} D:{:#04x} E:{:#04x} H:{:#04x} L:{:#04x} F:{}{}{}{} SP:{:#06x} PC:{:#06x}, Executing {:x?}",
-            cpu.a, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l,
-            if cpu.get_flag(CpuFlag::Zero) {"Z"} else {"-"},
-            if cpu.get_flag(CpuFlag::Subtraction) {"S"} else {"-"},
-            if cpu.get_flag(CpuFlag::HalfCarry) {"H"} else {"-"},
-            if cpu.get_flag(CpuFlag::Carry) {"C"} else {"-"},
-            cpu.sp, pc, instruction
-        );
-        }
+    let mut imgui = Context::create();
+    imgui.set_ini_filename(None);
 
-        let cycles = cpu.exec_instruction(&mut mmu, instruction);
-        mmu.gpu.cycle(cycles);
+    let mut platform = WinitPlatform::init(&mut imgui);
+    {
+        let gl_window = display.gl_window();
+        let window = gl_window.window();
+        platform.attach_window(imgui.io_mut(), window, HiDpiMode::Default);
     }
+
+    let hidpi_factor = platform.hidpi_factor();
+    let font_size = hidpi_factor * 13.0;
+    imgui.fonts().add_font(&[FontSource::DefaultFontData {
+        config: Some(FontConfig {
+            size_pixels: font_size as f32,
+            ..FontConfig::default()
+        }),
+    }]);
+
+    imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+
+    let mut renderer = Renderer::init(&mut imgui, &display).unwrap();
+
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::MainEventsCleared => {
+            let gl_window = display.gl_window();
+            platform
+                .prepare_frame(imgui.io_mut(), gl_window.window())
+                .unwrap();
+            gl_window.window().request_redraw();
+        }
+        Event::RedrawRequested(_) => {
+            let ui = imgui.frame();
+
+            ui.show_demo_window(&mut true);
+
+            Window::new(im_str!("CPU State")).build(&ui, || {
+                let flag_color = |set| {
+                    if set {
+                        [0.0, 1.0, 0.0, 1.0]
+                    } else {
+                        [1.0, 0.0, 0.0, 1.0]
+                    }
+                };
+
+                ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::Zero)), "Z");
+                ui.same_line_with_spacing(0.0, 8.0);
+                ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::Subtraction)), "S");
+                ui.same_line_with_spacing(0.0, 8.0);
+                ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::HalfCarry)), "H");
+                ui.same_line_with_spacing(0.0, 8.0);
+                ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::Carry)), "C");
+
+                ui.separator();
+
+                ui.text(format!("PC: {:#06x}", device.cpu().pc));
+                ui.text(format!("SP: {:#06x}", device.cpu().sp));
+                ui.spacing();
+                ui.text(format!("AF: {0:#06x} ({0})", device.cpu().af()));
+                ui.text(format!("BC: {0:#06x} ({0})", device.cpu().bc()));
+                ui.text(format!("DE: {0:#06x} ({0})", device.cpu().de()));
+                ui.text(format!("HL: {0:#06x} ({0})", device.cpu().hl()));
+            });
+
+            Window::new(im_str!("Disassembly")).build(&ui, || {
+                for (addr, instruction) in &disassembly {
+                    Selectable::new(&ImString::new(format!("{:#06x}: {}", addr, instruction)))
+                        .selected(&device.cpu().pc == addr)
+                        .build(&ui);
+                }
+            });
+
+            let gl_window = display.gl_window();
+            let mut target = display.draw();
+
+            target.clear_color_srgb(1.0, 1.0, 1.0, 1.0);
+
+            platform.prepare_render(&ui, gl_window.window());
+            let draw_data = ui.render();
+            renderer.render(&mut target, draw_data).unwrap();
+
+            target.finish().unwrap();
+        }
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => *control_flow = ControlFlow::Exit,
+        event => platform.handle_event(imgui.io_mut(), display.gl_window().window(), &event),
+    });
 }

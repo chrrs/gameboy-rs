@@ -1,4 +1,4 @@
-use std::u8;
+use std::{collections::BTreeMap, u8};
 
 use crate::{
     instruction::{CpuRegister, Instruction, InstructionOperand},
@@ -630,5 +630,22 @@ impl Cpu {
         let ret = (mmu.read(self.pc + 1) as u16) << 8 | (mmu.read(self.pc) as u16);
         self.pc = self.pc.wrapping_add(2);
         ret
+    }
+
+    pub fn disassemble(&mut self, mmu: &mut Mmu, max: u16) -> BTreeMap<u16, String> {
+        let old_pc = self.pc;
+        let mut res = BTreeMap::new();
+
+        self.pc = 0;
+        let mut pc = 0;
+        while !res.contains_key(&pc) && pc < max {
+            let instruction = self.fetch_instruction(mmu);
+            res.insert(pc, format!("{:x?}", instruction));
+            pc = self.pc;
+        }
+
+        self.pc = old_pc;
+
+        res
     }
 }

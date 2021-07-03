@@ -2,7 +2,7 @@ use crate::{cartridge::Cartridge, gpu::Gpu};
 
 pub struct Mmu {
     bios: Option<&'static [u8]>,
-    cart: Cartridge,
+    pub cart: Cartridge,
     pub gpu: Gpu,
     wram: Box<[u8; 0x2000]>,
     hram: Box<[u8; 0x7f]>,
