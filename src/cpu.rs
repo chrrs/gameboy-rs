@@ -284,7 +284,7 @@ impl Cpu {
                 }
             }
             Instruction::Xor(from) => {
-                self.a = self.a ^ self.get_u8(mmu, from);
+                self.a ^= self.get_u8(mmu, from);
 
                 self.set_flag(CpuFlag::Zero, self.a == 0);
                 self.set_flag(CpuFlag::Subtraction, false);
