@@ -54,7 +54,10 @@ impl Mmu {
                 }
             }
             0x100..=0x7fff => self.cart.write(address, value),
-            0x8000..=0x9fff => self.gpu.vram[address as usize - 0x8000] = value,
+            0x8000..=0x9fff => {
+                self.gpu.vram[address as usize - 0x8000] = value;
+                self.gpu.update_tile(address - 0x8000);
+            }
             0xc000..=0xdfff => self.wram[address as usize - 0xc000] = value,
             0xe000..=0xfdff => self.write(address - 0x2000, value),
             0xfe00..=0xfe9f => self.gpu.oam[address as usize - 0xfe00] = value,

@@ -16,7 +16,7 @@ use glium::{
     },
     texture::{ClientFormat, RawImage2d},
     uniforms::{MagnifySamplerFilter, SamplerBehavior},
-    Display, Surface, Texture2d,
+    Display, Rect, Surface, Texture2d,
 };
 use imgui::{
     im_str,
@@ -75,11 +75,30 @@ pub fn start_debug_view(mut device: Device) {
         format: ClientFormat::U8U8U8,
     };
 
-    let texture2d = Rc::new(
+    let display_texture = Rc::new(
         Texture2d::new(display.get_context(), raw_image).expect("failed to create display texture"),
     );
-    let texture_id = renderer.textures().insert(Texture {
-        texture: texture2d,
+    let display_texture_id = renderer.textures().insert(Texture {
+        texture: display_texture.clone(),
+        sampler: SamplerBehavior {
+            magnify_filter: MagnifySamplerFilter::Nearest,
+            ..SamplerBehavior::default()
+        },
+    });
+
+    let data = vec![0u8; 3 * 16 * 24 * 8 * 8];
+    let raw_image = RawImage2d {
+        data: Cow::Owned(data),
+        width: 8 * 16,
+        height: 8 * 24,
+        format: ClientFormat::U8U8U8,
+    };
+
+    let tile_texture = Rc::new(
+        Texture2d::new(display.get_context(), raw_image).expect("failed to create tile texture"),
+    );
+    let tile_texture_id = renderer.textures().insert(Texture {
+        texture: tile_texture.clone(),
         sampler: SamplerBehavior {
             magnify_filter: MagnifySamplerFilter::Nearest,
             ..SamplerBehavior::default()
@@ -89,7 +108,7 @@ pub fn start_debug_view(mut device: Device) {
     let mut display_scale = 3;
     let mut follow_execution = true;
     let mut run_status = RunStatus::Paused;
-    let mut emulation_speed = 60.0;
+    let mut emulation_speed = 4194304.0 / 70224.0;
     let mut last_frame = Instant::now();
 
     event_loop.run(move |event, _, control_flow| match event {
@@ -255,14 +274,58 @@ pub fn start_debug_view(mut device: Device) {
                 .scroll_bar(false)
                 .resizable(false)
                 .build(&ui, || {
+                    let display_framebuffer = device.display_framebuffer().to_vec();
+                    let raw_image = RawImage2d {
+                        data: Cow::Owned(display_framebuffer),
+                        width: 160,
+                        height: 144,
+                        format: ClientFormat::U8U8U8,
+                    };
+
+                    display_texture.write(
+                        Rect {
+                            bottom: 0,
+                            left: 0,
+                            width: 160,
+                            height: 144,
+                        },
+                        raw_image,
+                    );
+
                     Image::new(
-                        texture_id,
+                        display_texture_id,
                         [
                             160.0 * (display_scale as f32),
                             144.0 * (display_scale as f32),
                         ],
                     )
                     .build(&ui);
+                });
+
+            Window::new(im_str!("Tileset"))
+                .always_auto_resize(true)
+                .scroll_bar(false)
+                .resizable(false)
+                .build(&ui, || {
+                    let tile_framebuffer = device.tile_framebuffer().to_vec();
+                    let raw_image = RawImage2d {
+                        data: Cow::Owned(tile_framebuffer),
+                        width: 8 * 16,
+                        height: 8 * 24,
+                        format: ClientFormat::U8U8U8,
+                    };
+
+                    tile_texture.write(
+                        Rect {
+                            bottom: 0,
+                            left: 0,
+                            width: 16 * 8,
+                            height: 24 * 8,
+                        },
+                        raw_image,
+                    );
+
+                    Image::new(tile_texture_id, [16.0 * 8.0, 24.0 * 8.0]).build(&ui);
                 });
 
             let gl_window = display.gl_window();
