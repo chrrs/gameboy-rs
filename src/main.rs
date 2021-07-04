@@ -1,8 +1,9 @@
-use std::{fs::File, ptr::null};
+use std::{borrow::Cow, fs::File, ptr::null, rc::Rc};
 
 use clap::{App, Arg};
 use gameboy::{cartridge::Cartridge, cpu::CpuFlag, device::Device};
 use glium::{
+    backend::Facade,
     glutin::{
         dpi::LogicalSize,
         event::{Event, WindowEvent},
@@ -10,14 +11,16 @@ use glium::{
         window::WindowBuilder,
         ContextBuilder,
     },
-    Display, Surface,
+    texture::{ClientFormat, RawImage2d},
+    uniforms::{MagnifySamplerFilter, SamplerBehavior},
+    Display, Surface, Texture2d,
 };
 use imgui::{
     im_str,
     sys::{igBeginPopupContextItem, igEndPopup},
-    Context, FontConfig, FontSource, ImString, Key, MenuItem, Selectable, Window,
+    Condition, Context, FontConfig, FontSource, ImString, Image, MenuItem, Selectable, Window,
 };
-use imgui_glium_renderer::Renderer;
+use imgui_glium_renderer::{Renderer, Texture};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
 fn main() {
@@ -54,7 +57,7 @@ fn main() {
     let context = ContextBuilder::new().with_vsync(true);
     let builder = WindowBuilder::new()
         .with_title(device.cart().title().unwrap_or("gameboy"))
-        .with_inner_size(LogicalSize::new(800, 600));
+        .with_inner_size(LogicalSize::new(874, 473));
     let display = Display::new(builder, context, &event_loop).expect("failed to create display");
 
     let mut imgui = Context::create();
@@ -78,7 +81,29 @@ fn main() {
 
     imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
-    let mut renderer = Renderer::init(&mut imgui, &display).unwrap();
+    let mut renderer =
+        Renderer::init(&mut imgui, &display).expect("failed to create imgui glium renderer");
+
+    let data = vec![0u8; 144 * 160 * 3];
+    let raw_image = RawImage2d {
+        data: Cow::Owned(data),
+        width: 160,
+        height: 144,
+        format: ClientFormat::U8U8U8,
+    };
+
+    let texture2d = Rc::new(
+        Texture2d::new(display.get_context(), raw_image).expect("failed to create display texture"),
+    );
+    let texture_id = renderer.textures().insert(Texture {
+        texture: texture2d,
+        sampler: SamplerBehavior {
+            magnify_filter: MagnifySamplerFilter::Nearest,
+            ..SamplerBehavior::default()
+        },
+    });
+
+    let mut display_scale = 3;
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {
@@ -91,78 +116,127 @@ fn main() {
         Event::RedrawRequested(_) => {
             let ui = imgui.frame();
 
-            Window::new(im_str!("CPU State")).build(&ui, || {
-                let flag_color = |set| {
-                    if set {
-                        [0.0, 1.0, 0.0, 1.0]
-                    } else {
-                        [1.0, 0.0, 0.0, 1.0]
+            Window::new(im_str!("CPU State"))
+                .position([206.0, 238.0], Condition::FirstUseEver)
+                .size([166.0, 0.0], Condition::FirstUseEver)
+                .build(&ui, || {
+                    let flag_color = |set| {
+                        if set {
+                            [0.0, 1.0, 0.0, 1.0]
+                        } else {
+                            [1.0, 0.0, 0.0, 1.0]
+                        }
+                    };
+
+                    ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::Zero)), "Z");
+                    ui.same_line_with_spacing(0.0, 8.0);
+                    ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::Subtraction)), "S");
+                    ui.same_line_with_spacing(0.0, 8.0);
+                    ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::HalfCarry)), "H");
+                    ui.same_line_with_spacing(0.0, 8.0);
+                    ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::Carry)), "C");
+
+                    ui.separator();
+
+                    ui.text(format!("PC: {:#06x}", device.cpu().pc));
+                    ui.text(format!("SP: {:#06x}", device.cpu().sp));
+                    ui.spacing();
+                    ui.text(format!("Scanline: {}", device.gpu().scanline()));
+                    ui.text(format!(
+                        "Scroll: {}, {}",
+                        device.gpu().scroll_x,
+                        device.gpu().scroll_y
+                    ));
+                    ui.spacing();
+                    ui.text(format!("AF: {0:#06x} ({0})", device.cpu().af()));
+                    ui.text(format!("BC: {0:#06x} ({0})", device.cpu().bc()));
+                    ui.text(format!("DE: {0:#06x} ({0})", device.cpu().de()));
+                    ui.text(format!("HL: {0:#06x} ({0})", device.cpu().hl()));
+                });
+
+            Window::new(im_str!("Device Controls"))
+                .position([206.0, 3.0], Condition::FirstUseEver)
+                .resizable(false)
+                .build(&ui, || {
+                    ui.button(im_str!("Pause"), [150.0, 0.0]);
+                    ui.text("Status: Running");
+
+                    ui.separator();
+
+                    if ui.button(im_str!("Step instruction"), [150.0, 0.0]) {
+                        device.step();
                     }
-                };
 
-                ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::Zero)), "Z");
-                ui.same_line_with_spacing(0.0, 8.0);
-                ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::Subtraction)), "S");
-                ui.same_line_with_spacing(0.0, 8.0);
-                ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::HalfCarry)), "H");
-                ui.same_line_with_spacing(0.0, 8.0);
-                ui.text_colored(flag_color(device.cpu().get_flag(CpuFlag::Carry)), "C");
+                    ui.button(im_str!("Step frame"), [150.0, 0.0]);
 
-                ui.separator();
+                    if ui.button(im_str!("Skip instruction"), [150.0, 0.0]) {
+                        device.skip();
+                    }
 
-                ui.text(format!("PC: {:#06x}", device.cpu().pc));
-                ui.text(format!("SP: {:#06x}", device.cpu().sp));
-                ui.spacing();
-                ui.text(format!("Scanline: {}", device.gpu().scanline()));
-                ui.text(format!(
-                    "Scroll: {}, {}",
-                    device.gpu().scroll_x,
-                    device.gpu().scroll_y
-                ));
-                ui.spacing();
-                ui.text(format!("AF: {0:#06x} ({0})", device.cpu().af()));
-                ui.text(format!("BC: {0:#06x} ({0})", device.cpu().bc()));
-                ui.text(format!("DE: {0:#06x} ({0})", device.cpu().de()));
-                ui.text(format!("HL: {0:#06x} ({0})", device.cpu().hl()));
+                    ui.separator();
 
-                ui.separator();
+                    ui.text(im_str!("Emulation speed:"));
+                    ui.set_next_item_width(150.0);
+                    ui.input_float(im_str!("##emulation_speed"), &mut 60.0)
+                        .build();
 
-                if ui.button(im_str!("Reset device"), [0.0, 0.0]) {
-                    device.reset();
-                }
-            });
+                    ui.separator();
 
-            Window::new(im_str!("Disassembly")).build(&ui, || {
-                let pc_bound = device.cpu().pc.saturating_sub(20);
+                    ui.text(im_str!("Display scale:"));
+                    ui.set_next_item_width(150.0);
+                    ui.input_int(im_str!("##display_scale"), &mut display_scale)
+                        .build();
+                });
 
-                disassembly
-                    .iter()
-                    .skip_while(|(addr, _)| **addr < pc_bound)
-                    .take(0x1000)
-                    .for_each(|(addr, instruction)| {
-                        Selectable::new(&ImString::new(format!("{:#06x}: {}", addr, instruction)))
+            Window::new(im_str!("Disassembly"))
+                .position([3.0, 3.0], Condition::FirstUseEver)
+                .size([200.0, 0.0], Condition::FirstUseEver)
+                .build(&ui, || {
+                    let pc_bound = device.cpu().pc.saturating_sub(20);
+
+                    disassembly
+                        .iter()
+                        .skip_while(|(addr, _)| **addr < pc_bound)
+                        .take(0x1000)
+                        .for_each(|(addr, instruction)| {
+                            Selectable::new(&ImString::new(format!(
+                                "{:#06x}: {}",
+                                addr, instruction
+                            )))
                             .selected(&device.cpu().pc == addr)
                             .build(&ui);
 
-                        if unsafe { igBeginPopupContextItem(null(), 0) } {
-                            if MenuItem::new(im_str!("Jump to here")).build(&ui) {
-                                device.cpu_mut().pc = *addr;
-                            }
-
-                            if MenuItem::new(im_str!("Run to here")).build(&ui) {
-                                while device.cpu_mut().pc != *addr {
-                                    device.step();
+                            if unsafe { igBeginPopupContextItem(null(), 0) } {
+                                if MenuItem::new(im_str!("Jump to here")).build(&ui) {
+                                    device.cpu_mut().pc = *addr;
                                 }
+
+                                if MenuItem::new(im_str!("Run to here")).build(&ui) {
+                                    while device.cpu_mut().pc != *addr {
+                                        device.step();
+                                    }
+                                }
+
+                                unsafe { igEndPopup() };
                             }
+                        });
+                });
 
-                            unsafe { igEndPopup() };
-                        }
-                    });
-            });
-
-            if ui.is_key_pressed(Key::Enter) {
-                device.step();
-            }
+            Window::new(im_str!("Display"))
+                .position([375.0, 3.0], Condition::FirstUseEver)
+                .always_auto_resize(true)
+                .scroll_bar(false)
+                .resizable(false)
+                .build(&ui, || {
+                    Image::new(
+                        texture_id,
+                        [
+                            160.0 * (display_scale as f32),
+                            144.0 * (display_scale as f32),
+                        ],
+                    )
+                    .build(&ui);
+                });
 
             let gl_window = display.gl_window();
             let mut target = display.draw();

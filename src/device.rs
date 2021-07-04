@@ -21,6 +21,11 @@ impl Device {
         mmu.gpu.cycle(cycles);
     }
 
+    pub fn skip(&mut self) {
+        let Device { cpu, mmu } = self;
+        cpu.fetch_instruction(mmu);
+    }
+
     pub fn cpu(&self) -> &Cpu {
         &self.cpu
     }
