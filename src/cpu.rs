@@ -307,7 +307,7 @@ impl Cpu {
             Instruction::Bit(bit, from) => {
                 let set = self.get_u8(mmu, from) & (1 << bit) != 0;
 
-                self.set_flag(CpuFlag::Zero, set);
+                self.set_flag(CpuFlag::Zero, !set);
                 self.set_flag(CpuFlag::Subtraction, false);
                 self.set_flag(CpuFlag::HalfCarry, true);
             }
