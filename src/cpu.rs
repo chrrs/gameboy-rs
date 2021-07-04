@@ -402,7 +402,7 @@ impl Cpu {
                     self.set_flag(CpuFlag::HalfCarry, result & 0x10 != 0);
                     self.set_flag(
                         CpuFlag::Carry,
-                        (value < result) || (carry == 1 && value == result),
+                        (result < value) || (carry == 1 && value == result),
                     );
 
                     if let CpuRegister::SP = to {
@@ -421,7 +421,7 @@ impl Cpu {
                     self.set_flag(CpuFlag::HalfCarry, result & 0x10 != 0);
                     self.set_flag(
                         CpuFlag::Carry,
-                        (value < result) || (carry == 1 && value == result),
+                        (result < value) || (carry == 1 && value == result),
                     );
                 }
             }
