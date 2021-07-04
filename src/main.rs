@@ -37,7 +37,15 @@ fn main() {
         )
         .get_matches();
 
-    let cart = Cartridge::new(File::open(matches.value_of("rom").unwrap()).unwrap()).unwrap();
+    let cart = Cartridge::new(
+        File::open(
+            matches
+                .value_of("rom")
+                .expect("no rom command line argument supplied"),
+        )
+        .expect("file not found"),
+    )
+    .expect("failed to read file");
     let mut device = Device::new(cart);
 
     let disassembly = device.disassemble(0x8000);
@@ -47,7 +55,7 @@ fn main() {
     let builder = WindowBuilder::new()
         .with_title(device.cart().title().unwrap_or("gameboy"))
         .with_inner_size(LogicalSize::new(800, 600));
-    let display = Display::new(builder, context, &event_loop).unwrap();
+    let display = Display::new(builder, context, &event_loop).expect("failed to create display");
 
     let mut imgui = Context::create();
     imgui.set_ini_filename(None);
@@ -77,7 +85,7 @@ fn main() {
             let gl_window = display.gl_window();
             platform
                 .prepare_frame(imgui.io_mut(), gl_window.window())
-                .unwrap();
+                .expect("failed to prepare imgui frame");
             gl_window.window().request_redraw();
         }
         Event::RedrawRequested(_) => {
@@ -163,9 +171,11 @@ fn main() {
 
             platform.prepare_render(&ui, gl_window.window());
             let draw_data = ui.render();
-            renderer.render(&mut target, draw_data).unwrap();
+            renderer
+                .render(&mut target, draw_data)
+                .expect("failed to render imgui frame");
 
-            target.finish().unwrap();
+            target.finish().expect("failed to finish frame");
         }
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,

@@ -276,7 +276,9 @@ impl Cpu {
     }
 
     pub fn exec_next_instruction(&mut self, mmu: &mut Mmu) -> usize {
-        let instruction = self.fetch_instruction(mmu).unwrap();
+        let instruction = self
+            .fetch_instruction(mmu)
+            .expect("trying to execute an unrecognized instruction");
         self.exec_instruction(mmu, instruction)
     }
 
