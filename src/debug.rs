@@ -1,4 +1,8 @@
-use std::{borrow::Cow, rc::Rc};
+use std::{
+    borrow::Cow,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use gameboy::{cpu::CpuFlag, device::Device};
 use glium::{
@@ -22,6 +26,12 @@ use imgui::{
 };
 use imgui_glium_renderer::{Renderer, Texture};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
+
+enum RunStatus {
+    Running,
+    RunningUntil(u16),
+    Paused,
+}
 
 pub fn start_debug_view(mut device: Device) {
     let disassembly = device.disassemble(0x8000);
@@ -78,6 +88,9 @@ pub fn start_debug_view(mut device: Device) {
 
     let mut display_scale = 3;
     let mut follow_execution = true;
+    let mut run_status = RunStatus::Paused;
+    let mut emulation_speed = 60.0;
+    let mut last_frame = Instant::now();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {
@@ -88,6 +101,21 @@ pub fn start_debug_view(mut device: Device) {
             gl_window.window().request_redraw();
         }
         Event::RedrawRequested(_) => {
+            if last_frame.elapsed().as_secs_f32() >= 1.0 / emulation_speed {
+                last_frame += Duration::from_secs_f32(1.0 / emulation_speed);
+
+                match run_status {
+                    RunStatus::Running => device.step_frame(),
+                    RunStatus::RunningUntil(address) => {
+                        device.step_frame_until_pc(address);
+                        if device.cpu().pc == address {
+                            run_status = RunStatus::Paused;
+                        }
+                    }
+                    RunStatus::Paused => {}
+                }
+            }
+
             let ui = imgui.frame();
 
             Window::new(im_str!("CPU State"))
@@ -132,8 +160,28 @@ pub fn start_debug_view(mut device: Device) {
                 .position([206.0, 3.0], Condition::FirstUseEver)
                 .resizable(false)
                 .build(&ui, || {
-                    ui.button(im_str!("Pause"), [150.0, 0.0]);
-                    ui.text("Status: Running");
+                    if ui.button(
+                        if let RunStatus::Paused = run_status {
+                            im_str!("Run")
+                        } else {
+                            im_str!("Pause")
+                        },
+                        [150.0, 0.0],
+                    ) {
+                        if let RunStatus::Paused = run_status {
+                            run_status = RunStatus::Running;
+                        } else {
+                            run_status = RunStatus::Paused;
+                        }
+                    }
+
+                    ui.text(match run_status {
+                        RunStatus::Running => "Status: Running".to_owned(),
+                        RunStatus::RunningUntil(address) => {
+                            format!("Status: Run to {:#06x}", address)
+                        }
+                        RunStatus::Paused => "Status: Paused".to_owned(),
+                    });
 
                     ui.separator();
 
@@ -141,7 +189,9 @@ pub fn start_debug_view(mut device: Device) {
                         device.step();
                     }
 
-                    ui.button(im_str!("Step frame"), [150.0, 0.0]);
+                    if ui.button(im_str!("Step frame"), [150.0, 0.0]) {
+                        device.step_frame();
+                    }
 
                     if ui.button(im_str!("Skip instruction"), [150.0, 0.0]) {
                         device.skip();
@@ -151,7 +201,7 @@ pub fn start_debug_view(mut device: Device) {
 
                     ui.text(im_str!("Emulation speed:"));
                     ui.set_next_item_width(150.0);
-                    ui.input_float(im_str!("##emulation_speed"), &mut 60.0)
+                    ui.input_float(im_str!("##emulation_speed"), &mut emulation_speed)
                         .build();
 
                     ui.separator();
@@ -190,9 +240,7 @@ pub fn start_debug_view(mut device: Device) {
                                     }
 
                                     if MenuItem::new(im_str!("Run to here")).build(&ui) {
-                                        while device.cpu_mut().pc != *addr {
-                                            device.step();
-                                        }
+                                        run_status = RunStatus::RunningUntil(*addr);
                                     }
 
                                     unsafe { igEndPopup() };

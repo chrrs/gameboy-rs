@@ -15,6 +15,34 @@ impl Device {
         }
     }
 
+    pub fn step_frame(&mut self) {
+        while self.mmu.gpu.scanline() != 153 {
+            self.step();
+        }
+
+        while self.mmu.gpu.scanline() != 0 {
+            self.step();
+        }
+    }
+
+    pub fn step_frame_until_pc(&mut self, pc: u16) {
+        while self.mmu.gpu.scanline() != 153 {
+            self.step();
+
+            if self.cpu.pc == pc {
+                return;
+            }
+        }
+
+        while self.mmu.gpu.scanline() != 0 {
+            self.step();
+
+            if self.cpu.pc == pc {
+                return;
+            }
+        }
+    }
+
     pub fn step(&mut self) {
         let Device { cpu, mmu } = self;
         let cycles = cpu.exec_next_instruction(mmu);
