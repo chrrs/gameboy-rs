@@ -325,12 +325,13 @@ impl Cpu {
                     let val = self.get_u16(mmu, to).wrapping_add(1);
                     self.set_u16(to, val);
                 } else {
-                    let val = self.get_u8(mmu, to).wrapping_add(1);
+                    let ov = self.get_u8(mmu, to);
+                    let val = ov.wrapping_add(1);
                     self.set_u8(mmu, to, val);
 
                     self.set_flag(CpuFlag::Zero, val == 0);
                     self.set_flag(CpuFlag::Subtraction, false);
-                    self.set_flag(CpuFlag::HalfCarry, val & 0x10 != 0);
+                    self.set_flag(CpuFlag::HalfCarry, ov & 0x10 != val & 0x10);
                 }
             }
             Instruction::Decrement(to) => {
@@ -338,12 +339,13 @@ impl Cpu {
                     let val = self.get_u16(mmu, to).wrapping_sub(1);
                     self.set_u16(to, val);
                 } else {
-                    let val = self.get_u8(mmu, to).wrapping_sub(1);
+                    let ov = self.get_u8(mmu, to);
+                    let val = ov.wrapping_sub(1);
                     self.set_u8(mmu, to, val);
 
                     self.set_flag(CpuFlag::Zero, val == 0);
                     self.set_flag(CpuFlag::Subtraction, true);
-                    self.set_flag(CpuFlag::HalfCarry, val & 0x10 != 0);
+                    self.set_flag(CpuFlag::HalfCarry, ov & 0xf == 0);
                 }
             }
             Instruction::Call(address) => {
@@ -380,6 +382,9 @@ impl Cpu {
             Instruction::Compare(to) => {
                 let value = self.get_u8(mmu, to);
                 self.set_flag(CpuFlag::Zero, value == self.a);
+                self.set_flag(CpuFlag::Subtraction, true);
+                self.set_flag(CpuFlag::HalfCarry, false);
+                self.set_flag(CpuFlag::Carry, false);
             }
             Instruction::Subtract(from) => {
                 let carry = 0; //self.get_flag(CpuFlag::Carry) as u8;

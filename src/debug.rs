@@ -138,7 +138,7 @@ pub fn start_debug_view(mut device: Device) {
             let ui = imgui.frame();
 
             Window::new(im_str!("CPU State"))
-                .position([206.0, 238.0], Condition::FirstUseEver)
+                .position([206.0, 265.0], Condition::FirstUseEver)
                 .size([166.0, 0.0], Condition::FirstUseEver)
                 .build(&ui, || {
                     let flag_color = |set| {
@@ -229,6 +229,12 @@ pub fn start_debug_view(mut device: Device) {
                     ui.set_next_item_width(150.0);
                     ui.input_int(im_str!("##display_scale"), &mut display_scale)
                         .build();
+
+                    ui.separator();
+
+                    if ui.button(im_str!("Reset"), [150.0, 0.0]) {
+                        device.reset();
+                    }
                 });
 
             Window::new(im_str!("Disassembly"))

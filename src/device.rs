@@ -22,6 +22,20 @@ impl Device {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.cpu.a = 0;
+        self.cpu.b = 0;
+        self.cpu.c = 0;
+        self.cpu.d = 0;
+        self.cpu.e = 0;
+        self.cpu.h = 0;
+        self.cpu.l = 0;
+        self.cpu.f = 0;
+        self.cpu.pc = 0;
+        self.mmu.gpu.scroll_x = 0;
+        self.mmu.gpu.scroll_y = 0;
+    }
+
     pub fn step_frame(&mut self) {
         while !self.step() {}
     }
@@ -66,10 +80,6 @@ impl Device {
     pub fn disassemble(&mut self, max: u16) -> BTreeMap<u16, String> {
         let Device { cpu, mmu, .. } = self;
         cpu.disassemble(mmu, max)
-    }
-
-    pub fn reset(&mut self) {
-        self.cpu.pc = 0;
     }
 
     pub fn tile_framebuffer(&self) -> &[u8] {
