@@ -381,25 +381,11 @@ impl Cpu {
             Instruction::Return => self.pc = self.pop_u16(mmu),
             Instruction::Compare(to) => {
                 let value = self.get_u8(mmu, to);
-                self.set_flag(CpuFlag::Zero, value == self.a);
-                self.set_flag(CpuFlag::Subtraction, true);
-                self.set_flag(CpuFlag::HalfCarry, false);
-                self.set_flag(CpuFlag::Carry, false);
+                self.subtract_a(value, false);
             }
             Instruction::Subtract(from) => {
-                let carry = 0; //self.get_flag(CpuFlag::Carry) as u8;
                 let value = self.get_u8(mmu, from);
-                let previous = self.a;
-
-                self.a = self.a.wrapping_sub(value).wrapping_sub(carry);
-
-                self.set_flag(CpuFlag::Zero, self.a == 0);
-                self.set_flag(CpuFlag::Subtraction, true);
-                self.set_flag(CpuFlag::HalfCarry, self.a & 0x10 != 0);
-                self.set_flag(
-                    CpuFlag::Carry,
-                    (self.a > previous) || (carry == 1 && self.a == previous),
-                );
+                self.a = self.subtract_a(value, false);
             }
             Instruction::Add(to, from) => {
                 let carry = 0; //self.get_flag(CpuFlag::Carry) as u8;
@@ -443,6 +429,26 @@ impl Cpu {
         }
 
         cycles
+    }
+
+    fn subtract_a(&mut self, value: u8, carry: bool) -> u8 {
+        let carry = carry as u8;
+        let previous = self.a;
+
+        let result = self.a.wrapping_sub(value).wrapping_sub(carry);
+
+        self.set_flag(CpuFlag::Zero, result == 0);
+        self.set_flag(CpuFlag::Subtraction, true);
+        self.set_flag(
+            CpuFlag::HalfCarry,
+            (result & 0xf).wrapping_sub(value & 0xf).wrapping_sub(carry) & 0x10 != 0,
+        );
+        self.set_flag(
+            CpuFlag::Carry,
+            (result > previous) || (carry == 1 && result == previous),
+        );
+
+        result
     }
 
     pub fn fetch_instruction(&mut self, mmu: &mut Mmu) -> Option<Instruction> {
