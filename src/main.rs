@@ -18,7 +18,8 @@ use glium::{
 use imgui::{
     im_str,
     sys::{igBeginPopupContextItem, igEndPopup},
-    Condition, Context, FontConfig, FontSource, ImString, Image, MenuItem, Selectable, Window,
+    ChildWindow, Condition, Context, FontConfig, FontSource, ImString, Image, MenuItem, Selectable,
+    Window,
 };
 use imgui_glium_renderer::{Renderer, Texture};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
@@ -104,6 +105,7 @@ fn main() {
     });
 
     let mut display_scale = 3;
+    let mut follow_execution = true;
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {
@@ -190,36 +192,41 @@ fn main() {
 
             Window::new(im_str!("Disassembly"))
                 .position([3.0, 3.0], Condition::FirstUseEver)
-                .size([200.0, 0.0], Condition::FirstUseEver)
+                .size([200.0, 467.0], Condition::FirstUseEver)
                 .build(&ui, || {
-                    let pc_bound = device.cpu().pc.saturating_sub(20);
+                    ui.checkbox(im_str!("Follow execution"), &mut follow_execution);
 
-                    disassembly
-                        .iter()
-                        .skip_while(|(addr, _)| **addr < pc_bound)
-                        .take(0x1000)
-                        .for_each(|(addr, instruction)| {
-                            Selectable::new(&ImString::new(format!(
-                                "{:#06x}: {}",
-                                addr, instruction
-                            )))
-                            .selected(&device.cpu().pc == addr)
-                            .build(&ui);
+                    ChildWindow::new(im_str!("Instruction list")).build(&ui, || {
+                        disassembly
+                            .iter()
+                            .take(0x1000)
+                            .for_each(|(addr, instruction)| {
+                                Selectable::new(&ImString::new(format!(
+                                    "{:#06x}: {}",
+                                    addr, instruction
+                                )))
+                                .selected(&device.cpu().pc == addr)
+                                .build(&ui);
 
-                            if unsafe { igBeginPopupContextItem(null(), 0) } {
-                                if MenuItem::new(im_str!("Jump to here")).build(&ui) {
-                                    device.cpu_mut().pc = *addr;
+                                if follow_execution && &device.cpu().pc == addr {
+                                    ui.set_scroll_here_y()
                                 }
 
-                                if MenuItem::new(im_str!("Run to here")).build(&ui) {
-                                    while device.cpu_mut().pc != *addr {
-                                        device.step();
+                                if unsafe { igBeginPopupContextItem(null(), 0) } {
+                                    if MenuItem::new(im_str!("Jump to here")).build(&ui) {
+                                        device.cpu_mut().pc = *addr;
                                     }
-                                }
 
-                                unsafe { igEndPopup() };
-                            }
-                        });
+                                    if MenuItem::new(im_str!("Run to here")).build(&ui) {
+                                        while device.cpu_mut().pc != *addr {
+                                            device.step();
+                                        }
+                                    }
+
+                                    unsafe { igEndPopup() };
+                                }
+                            });
+                    });
                 });
 
             Window::new(im_str!("Display"))
