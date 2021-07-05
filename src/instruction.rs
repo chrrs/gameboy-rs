@@ -181,7 +181,7 @@ impl Instruction {
     pub fn cycles(&self) -> usize {
         match self {
             Instruction::Noop => 1,
-            Instruction::Stop => 1,
+            Instruction::Stop => 0,
             Instruction::Load(to, from) => 1 + to.cycles(false) + from.cycles(false),
             Instruction::And(from) => 1 + from.cycles(false),
             Instruction::Or(from) => 1 + from.cycles(false),
