@@ -37,6 +37,8 @@ impl Memory for Mmu {
             0xc000..=0xdfff => Ok(self.wram[address as usize - 0xc000]),
             0xe000..=0xfdff => self.read(address - 0x2000),
             0xfe00..=0xfe9f => Ok(self.gpu.oam[address as usize - 0xfe00]),
+            0xfea0..=0xfeff => Ok(0xff),
+            0xff00 => Ok(0xff), // Joypad P1
             0xff42 => Ok(self.gpu.scroll_y),
             0xff43 => Ok(self.gpu.scroll_x),
             0xff44 => Ok(self.gpu.scanline()),
@@ -79,14 +81,15 @@ impl Memory for Mmu {
                 self.gpu.oam[address as usize - 0xfe00] = value;
                 Ok(())
             }
-            0xff11 => Ok(()),
-            0xff12 => Ok(()),
-            0xff13 => Ok(()),
-            0xff14 => Ok(()),
-            0xff24 => Ok(()),
-            0xff25 => Ok(()),
-            0xff26 => Ok(()),
-            0xff40 => Ok(()),
+            0xfea0..=0xfeff => Ok(()),
+            0xff00 => Ok(()),          // Joypad P1
+            0xff01 => Ok(()),          // Serial transfer data
+            0xff02 => Ok(()),          // Serial transfer control
+            0xff06 => Ok(()),          // Timer Modulo
+            0xff0f => Ok(()),          // Interrupt flag
+            0xff10..=0xff26 => Ok(()), // Sound
+            0xff40 => Ok(()),          // LCD Control
+            0xff41 => Ok(()),          // LCD Stat
             0xff42 => {
                 self.gpu.scroll_y = value;
                 Ok(())
@@ -96,12 +99,24 @@ impl Memory for Mmu {
                 Ok(())
             }
             0xff44 => Err(MemoryError::ReadOnly { address }),
-            0xff47 => Ok(()),
-            0xff50 => Ok(()),
+            0xff47 => Ok(()), // BG Palette Data
+            0xff48 => Ok(()), // Object Palette 0 Data
+            0xff49 => Ok(()), // Object Palette 1 Data
+            0xff4a => Ok(()), // Window Y
+            0xff4b => Ok(()), // Window X
+            0xff50 => {
+                if value != 0 {
+                    self.bios = None;
+                }
+
+                Ok(())
+            }
+            0xff70..=0xff7f => Ok(()), // WRAM Bank Select
             0xff80..=0xfffe => {
                 self.hram[address as usize - 0xff80] = value;
                 Ok(())
             }
+            0xffff => Ok(()), // Enable interrupts
             _ => Err(MemoryError::Unmapped {
                 address,
                 op: MemoryOperation::Write,

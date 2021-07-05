@@ -153,8 +153,11 @@ pub enum Instruction {
     Noop,
     Stop,
     Load(InstructionOperand, InstructionOperand),
+    And(InstructionOperand),
+    Or(InstructionOperand),
     Xor(InstructionOperand),
     Bit(u8, InstructionOperand),
+    Jump(u16),
     JumpRelative(i8),
     JumpRelativeIf(CpuFlag, bool, i8),
     Increment(InstructionOperand),
@@ -168,6 +171,10 @@ pub enum Instruction {
     RotateLeftA,
     ExtendedRotateLeft(InstructionOperand),
     Return,
+    DisableInterrupts,
+    EnableInterrupts,
+    Complement,
+    Swap(InstructionOperand),
 }
 
 impl Instruction {
@@ -176,8 +183,11 @@ impl Instruction {
             Instruction::Noop => 1,
             Instruction::Stop => 1,
             Instruction::Load(to, from) => 1 + to.cycles(false) + from.cycles(false),
+            Instruction::And(from) => 1 + from.cycles(false),
+            Instruction::Or(from) => 1 + from.cycles(false),
             Instruction::Xor(from) => 1 + from.cycles(false),
             Instruction::Bit(_, from) => 2 + from.cycles(false),
+            Instruction::Jump(_) => 4,
             Instruction::JumpRelative(_) => 3,
             Instruction::JumpRelativeIf(_, _, _) => 2,
             Instruction::Increment(to) => 1 + to.cycles(true),
@@ -193,6 +203,10 @@ impl Instruction {
             Instruction::RotateLeftA => 1,
             Instruction::ExtendedRotateLeft(to) => 2 + to.cycles(true),
             Instruction::Return => 4,
+            Instruction::DisableInterrupts => 1,
+            Instruction::EnableInterrupts => 1,
+            Instruction::Complement => 1,
+            Instruction::Swap(to) => 2 + to.cycles(true),
         }
     }
 }
@@ -203,8 +217,11 @@ impl fmt::Display for Instruction {
             Instruction::Noop => write!(f, "noop"),
             Instruction::Stop => write!(f, "stop"),
             Instruction::Load(to, from) => write!(f, "ld {}, {}", to, from),
+            Instruction::And(from) => write!(f, "and {}", from),
+            Instruction::Or(from) => write!(f, "or {}", from),
             Instruction::Xor(from) => write!(f, "xor {}", from),
             Instruction::Bit(bit, from) => write!(f, "bit {}, {}", bit, from),
+            Instruction::Jump(address) => write!(f, "jp {:#06x}", address),
             Instruction::JumpRelative(offset) => write!(f, "jr {}", offset),
             Instruction::JumpRelativeIf(flag, expected, offset) => {
                 write!(
@@ -226,6 +243,10 @@ impl fmt::Display for Instruction {
             Instruction::RotateLeftA => write!(f, "rla"),
             Instruction::ExtendedRotateLeft(to) => write!(f, "rl {}", to),
             Instruction::Return => write!(f, "ret"),
+            Instruction::DisableInterrupts => write!(f, "di"),
+            Instruction::EnableInterrupts => write!(f, "ei"),
+            Instruction::Complement => write!(f, "cpl"),
+            Instruction::Swap(to) => write!(f, "swap {}", to),
         }
     }
 }

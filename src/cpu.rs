@@ -388,6 +388,22 @@ impl Cpu {
                     self.set_u8(mem, to, val)?;
                 }
             }
+            Instruction::And(from) => {
+                self.a &= self.get_u8(mem, from)?;
+
+                self.set_flag(CpuFlag::Zero, self.a == 0);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, true);
+                self.set_flag(CpuFlag::Carry, false);
+            }
+            Instruction::Or(from) => {
+                self.a |= self.get_u8(mem, from)?;
+
+                self.set_flag(CpuFlag::Zero, self.a == 0);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, false);
+                self.set_flag(CpuFlag::Carry, false);
+            }
             Instruction::Xor(from) => {
                 self.a ^= self.get_u8(mem, from)?;
 
@@ -402,6 +418,9 @@ impl Cpu {
                 self.set_flag(CpuFlag::Zero, !set);
                 self.set_flag(CpuFlag::Subtraction, false);
                 self.set_flag(CpuFlag::HalfCarry, true);
+            }
+            Instruction::Jump(address) => {
+                self.pc = address;
             }
             Instruction::JumpRelative(offset) => {
                 self.pc = self.pc.wrapping_add(offset as u16);
@@ -517,6 +536,29 @@ impl Cpu {
                     );
                 }
             }
+            Instruction::DisableInterrupts => {
+                // TODO: Implement interrupts
+            }
+            Instruction::EnableInterrupts => {
+                // TODO: Implement interrupts
+            }
+            Instruction::Complement => {
+                self.a = !self.a;
+
+                self.set_flag(CpuFlag::Subtraction, true);
+                self.set_flag(CpuFlag::HalfCarry, true);
+            }
+            Instruction::Swap(to) => {
+                let value = self.get_u8(mem, to)?;
+                let result = value >> 4 | (value & 0xf) << 4;
+
+                self.set_u8(mem, to, result)?;
+
+                self.set_flag(CpuFlag::Zero, result == 0);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, false);
+                self.set_flag(CpuFlag::Carry, false);
+            }
             _ => panic!("unimplemented instruction {:x?}", instruction),
         }
 
@@ -553,6 +595,10 @@ impl Cpu {
 
         match opcode {
             0x00 => Ok(Instruction::Noop),
+            0x01 => Ok(Instruction::Load(
+                InstructionOperand::Register(CpuRegister::BC),
+                InstructionOperand::Immediate16(self.fetch_u16(mem)?),
+            )),
             0x02 => Ok(Instruction::Load(
                 InstructionOperand::MemoryLocationRegister(CpuRegister::BC),
                 InstructionOperand::Register(CpuRegister::A),
@@ -567,6 +613,9 @@ impl Cpu {
                 InstructionOperand::Register(CpuRegister::B),
                 InstructionOperand::Immediate8(self.fetch_u8(mem)?),
             )),
+            0x0b => Ok(Instruction::Decrement(InstructionOperand::Register(
+                CpuRegister::BC,
+            ))),
             0x0c => Ok(Instruction::Increment(InstructionOperand::Register(
                 CpuRegister::C,
             ))),
@@ -628,10 +677,15 @@ impl Cpu {
                 true,
                 self.fetch_u8(mem)? as i8,
             )),
+            0x2a => Ok(Instruction::Load(
+                InstructionOperand::Register(CpuRegister::A),
+                InstructionOperand::MemoryLocationRegisterIncrement(CpuRegister::HL),
+            )),
             0x2e => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::L),
                 InstructionOperand::Immediate8(self.fetch_u8(mem)?),
             )),
+            0x2f => Ok(Instruction::Complement),
             0x31 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::SP),
                 InstructionOperand::Immediate16(self.fetch_u16(mem)?),
@@ -640,12 +694,20 @@ impl Cpu {
                 InstructionOperand::MemoryLocationRegisterDecrement(CpuRegister::HL),
                 InstructionOperand::Register(CpuRegister::A),
             )),
+            0x36 => Ok(Instruction::Load(
+                InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
+                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
+            )),
             0x3d => Ok(Instruction::Decrement(InstructionOperand::Register(
                 CpuRegister::A,
             ))),
             0x3e => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::A),
                 InstructionOperand::Immediate8(self.fetch_u8(mem)?),
+            )),
+            0x47 => Ok(Instruction::Load(
+                InstructionOperand::Register(CpuRegister::B),
+                InstructionOperand::Register(CpuRegister::A),
             )),
             0x4f => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::C),
@@ -686,13 +748,83 @@ impl Cpu {
             0x90 => Ok(Instruction::Subtract(InstructionOperand::Register(
                 CpuRegister::B,
             ))),
+            0xa0 => Ok(Instruction::And(InstructionOperand::Register(
+                CpuRegister::B,
+            ))),
+            0xa1 => Ok(Instruction::And(InstructionOperand::Register(
+                CpuRegister::C,
+            ))),
+            0xa2 => Ok(Instruction::And(InstructionOperand::Register(
+                CpuRegister::D,
+            ))),
+            0xa3 => Ok(Instruction::And(InstructionOperand::Register(
+                CpuRegister::E,
+            ))),
+            0xa4 => Ok(Instruction::And(InstructionOperand::Register(
+                CpuRegister::H,
+            ))),
+            0xa5 => Ok(Instruction::And(InstructionOperand::Register(
+                CpuRegister::L,
+            ))),
+            0xa6 => Ok(Instruction::And(
+                InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
+            )),
+            0xa7 => Ok(Instruction::And(InstructionOperand::Register(
+                CpuRegister::A,
+            ))),
+            0xa8 => Ok(Instruction::Xor(InstructionOperand::Register(
+                CpuRegister::B,
+            ))),
+            0xa9 => Ok(Instruction::Xor(InstructionOperand::Register(
+                CpuRegister::C,
+            ))),
+            0xaa => Ok(Instruction::Xor(InstructionOperand::Register(
+                CpuRegister::D,
+            ))),
+            0xab => Ok(Instruction::Xor(InstructionOperand::Register(
+                CpuRegister::E,
+            ))),
+            0xac => Ok(Instruction::Xor(InstructionOperand::Register(
+                CpuRegister::H,
+            ))),
+            0xad => Ok(Instruction::Xor(InstructionOperand::Register(
+                CpuRegister::L,
+            ))),
+            0xae => Ok(Instruction::Xor(
+                InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
+            )),
             0xaf => Ok(Instruction::Xor(InstructionOperand::Register(
+                CpuRegister::A,
+            ))),
+            0xb0 => Ok(Instruction::Or(InstructionOperand::Register(
+                CpuRegister::B,
+            ))),
+            0xb1 => Ok(Instruction::Or(InstructionOperand::Register(
+                CpuRegister::C,
+            ))),
+            0xb2 => Ok(Instruction::Or(InstructionOperand::Register(
+                CpuRegister::D,
+            ))),
+            0xb3 => Ok(Instruction::Or(InstructionOperand::Register(
+                CpuRegister::E,
+            ))),
+            0xb4 => Ok(Instruction::Or(InstructionOperand::Register(
+                CpuRegister::H,
+            ))),
+            0xb5 => Ok(Instruction::Or(InstructionOperand::Register(
+                CpuRegister::L,
+            ))),
+            0xb6 => Ok(Instruction::Or(InstructionOperand::MemoryLocationRegister(
+                CpuRegister::HL,
+            ))),
+            0xb7 => Ok(Instruction::Or(InstructionOperand::Register(
                 CpuRegister::A,
             ))),
             0xbe => Ok(Instruction::Compare(
                 InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
             )),
             0xc1 => Ok(Instruction::Pop(CpuRegister::BC)),
+            0xc3 => Ok(Instruction::Jump(self.fetch_u16(mem)?)),
             0xc5 => Ok(Instruction::Push(CpuRegister::BC)),
             0xc9 => Ok(Instruction::Return),
             0xcb => self.fetch_extended_instruction(mem),
@@ -705,6 +837,9 @@ impl Cpu {
                 InstructionOperand::OffsetMemoryLocationRegister(0xff00, CpuRegister::C),
                 InstructionOperand::Register(CpuRegister::A),
             )),
+            0xe6 => Ok(Instruction::And(InstructionOperand::Immediate8(
+                self.fetch_u8(mem)?,
+            ))),
             0xea => Ok(Instruction::Load(
                 InstructionOperand::MemoryLocationImmediate16(self.fetch_u16(mem)?),
                 InstructionOperand::Register(CpuRegister::A),
@@ -713,6 +848,8 @@ impl Cpu {
                 InstructionOperand::Register(CpuRegister::A),
                 InstructionOperand::OffsetMemoryLocationImmediate8(0xff00, self.fetch_u8(mem)?),
             )),
+            0xf3 => Ok(Instruction::DisableInterrupts),
+            0xfb => Ok(Instruction::EnableInterrupts),
             0xfe => Ok(Instruction::Compare(InstructionOperand::Immediate8(
                 self.fetch_u8(mem)?,
             ))),
@@ -732,6 +869,9 @@ impl Cpu {
             0x11 => Ok(Instruction::ExtendedRotateLeft(
                 InstructionOperand::Register(CpuRegister::C),
             )),
+            0x37 => Ok(Instruction::Swap(InstructionOperand::Register(
+                CpuRegister::A,
+            ))),
             0x7c => Ok(Instruction::Bit(
                 7,
                 InstructionOperand::Register(CpuRegister::H),
