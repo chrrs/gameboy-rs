@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use crate::{bios::DMG_BIOS, cartridge::Cartridge, cpu::Cpu, gpu::Gpu, mmu::Mmu};
+use anyhow::Context;
+
+use crate::{bios::DMG_BIOS, cartridge::Cartridge, cpu::Cpu, gpu::Gpu, memory::mmu::Mmu};
 
 const PALETTE: [[u8; 3]; 4] = [[255, 255, 255], [192, 192, 192], [96, 96, 96], [0, 0, 0]];
 
@@ -46,7 +48,10 @@ impl Device {
 
     pub fn step(&mut self) -> bool {
         let Device { cpu, mmu, .. } = self;
-        let cycles = cpu.exec_next_instruction(mmu);
+        let cycles = cpu
+            .exec_next_instruction(mmu)
+            .context("failed to fetch next instruction")
+            .unwrap();
 
         if mmu.gpu.cycle(cycles) {
             self.update_framebuffers();
@@ -58,7 +63,9 @@ impl Device {
 
     pub fn skip(&mut self) {
         let Device { cpu, mmu, .. } = self;
-        cpu.fetch_instruction(mmu);
+        cpu.fetch_instruction(mmu)
+            .context("failed to fetch next instruction")
+            .unwrap();
     }
 
     pub fn cpu(&self) -> &Cpu {
@@ -100,8 +107,8 @@ impl Device {
                         let color = PALETTE[tile.get(x, y) as usize];
 
                         let index = 3 * (8 * tile_x + x + 16 * 8 * 8 * tile_y + 16 * 8 * y);
-                        for i in 0..3 {
-                            self.tile_framebuffer[index + i] = color[i];
+                        for (i, c) in color.iter().enumerate() {
+                            self.tile_framebuffer[index + i] = *c;
                         }
                     }
                 }

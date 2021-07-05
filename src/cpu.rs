@@ -1,9 +1,35 @@
 use std::{collections::BTreeMap, fmt, u8};
+use thiserror::Error;
 
 use crate::{
     instruction::{CpuRegister, Instruction, InstructionOperand},
-    mmu::Mmu,
+    memory::{Memory, MemoryError, MemoryOperation},
 };
+
+#[derive(Error, Debug, Clone, Copy)]
+pub enum InstructionError {
+    #[error("invalid opcode {opcode:#04x}")]
+    InvalidOpcode { opcode: u16 },
+    #[error("memory error")]
+    MemoryError(#[from] MemoryError),
+}
+
+#[derive(Error, Debug, Clone, Copy)]
+pub enum CpuError {
+    #[error("{op} to {operand} with mismatched argument size")]
+    OperandSizeMismatch {
+        operand: InstructionOperand,
+        op: MemoryOperation,
+    },
+    #[error("access to immediate operand with mismatched argument size")]
+    ImmediateSizeMismatch,
+    #[error("write to immediate operand")]
+    ImmediateWrite,
+    #[error("memory error")]
+    MemoryError(#[from] MemoryError),
+    #[error("instruction error")]
+    InstructionError(#[from] InstructionError),
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum CpuFlag {
@@ -111,41 +137,48 @@ impl Cpu {
             self.f &= !flag.bit()
         }
     }
+}
 
-    pub fn pop_u16(&mut self, mmu: &mut Mmu) -> u16 {
-        let lo = mmu.read(self.sp);
+impl Cpu {
+    pub fn pop_u16<M: Memory>(&mut self, mem: &mut M) -> Result<u16, MemoryError> {
+        let lo = mem.read(self.sp)?;
         self.sp = self.sp.wrapping_add(1);
-        let hi = mmu.read(self.sp);
+        let hi = mem.read(self.sp)?;
         self.sp = self.sp.wrapping_add(1);
 
-        (hi as u16) << 8 | (lo as u16)
+        Ok((hi as u16) << 8 | (lo as u16))
     }
 
-    pub fn push_u16(&mut self, mmu: &mut Mmu, value: u16) {
+    pub fn push_u16<M: Memory>(&mut self, mem: &mut M, value: u16) -> Result<(), MemoryError> {
         let hi = (value >> 8) as u8;
         let lo = value as u8;
 
         self.sp = self.sp.wrapping_sub(1);
-        mmu.write(self.sp, hi);
+        mem.write(self.sp, hi)?;
         self.sp = self.sp.wrapping_sub(1);
-        mmu.write(self.sp, lo);
+        mem.write(self.sp, lo)?;
+
+        Ok(())
     }
 
-    fn get_reg_u8(&mut self, reg: CpuRegister) -> u8 {
+    fn get_reg_u8(&mut self, reg: CpuRegister) -> Result<u8, CpuError> {
         match reg {
-            CpuRegister::A => self.a,
-            CpuRegister::B => self.b,
-            CpuRegister::C => self.c,
-            CpuRegister::D => self.d,
-            CpuRegister::E => self.e,
-            CpuRegister::H => self.h,
-            CpuRegister::L => self.l,
-            CpuRegister::F => self.f,
-            _ => panic!("tried to get u8 value of register {:?}", reg),
+            CpuRegister::A => Ok(self.a),
+            CpuRegister::B => Ok(self.b),
+            CpuRegister::C => Ok(self.c),
+            CpuRegister::D => Ok(self.d),
+            CpuRegister::E => Ok(self.e),
+            CpuRegister::H => Ok(self.h),
+            CpuRegister::L => Ok(self.l),
+            CpuRegister::F => Ok(self.f),
+            _ => Err(CpuError::OperandSizeMismatch {
+                operand: InstructionOperand::Register(reg),
+                op: MemoryOperation::Read,
+            }),
         }
     }
 
-    fn set_reg_u8(&mut self, reg: CpuRegister, value: u8) {
+    fn set_reg_u8(&mut self, reg: CpuRegister, value: u8) -> Result<(), CpuError> {
         match reg {
             CpuRegister::A => self.a = value,
             CpuRegister::B => self.b = value,
@@ -161,143 +194,183 @@ impl Cpu {
             CpuRegister::HL => self.set_hl(value as u16),
             CpuRegister::SP => self.sp = value as u16,
         }
+
+        Ok(())
     }
 
-    fn get_reg_u16(&mut self, reg: CpuRegister) -> u16 {
+    fn get_reg_u16(&mut self, reg: CpuRegister) -> Result<u16, CpuError> {
         match reg {
-            CpuRegister::A => self.a as u16,
-            CpuRegister::B => self.b as u16,
-            CpuRegister::C => self.c as u16,
-            CpuRegister::D => self.d as u16,
-            CpuRegister::E => self.e as u16,
-            CpuRegister::H => self.h as u16,
-            CpuRegister::L => self.l as u16,
-            CpuRegister::F => self.f as u16,
-            CpuRegister::AF => self.af(),
-            CpuRegister::BC => self.bc(),
-            CpuRegister::DE => self.de(),
-            CpuRegister::HL => self.hl(),
-            CpuRegister::SP => self.sp,
+            CpuRegister::A => Ok(self.a as u16),
+            CpuRegister::B => Ok(self.b as u16),
+            CpuRegister::C => Ok(self.c as u16),
+            CpuRegister::D => Ok(self.d as u16),
+            CpuRegister::E => Ok(self.e as u16),
+            CpuRegister::H => Ok(self.h as u16),
+            CpuRegister::L => Ok(self.l as u16),
+            CpuRegister::F => Ok(self.f as u16),
+            CpuRegister::AF => Ok(self.af()),
+            CpuRegister::BC => Ok(self.bc()),
+            CpuRegister::DE => Ok(self.de()),
+            CpuRegister::HL => Ok(self.hl()),
+            CpuRegister::SP => Ok(self.sp),
         }
     }
 
-    fn set_reg_u16(&mut self, reg: CpuRegister, value: u16) {
+    fn set_reg_u16(&mut self, reg: CpuRegister, value: u16) -> Result<(), CpuError> {
         match reg {
             CpuRegister::AF => self.set_af(value),
             CpuRegister::BC => self.set_bc(value),
             CpuRegister::DE => self.set_de(value),
             CpuRegister::HL => self.set_hl(value),
             CpuRegister::SP => self.sp = value,
-            _ => panic!("tried to set u16 value of register {:?}", reg),
+            _ => {
+                return Err(CpuError::OperandSizeMismatch {
+                    operand: InstructionOperand::Register(reg),
+                    op: MemoryOperation::Write,
+                })
+            }
         }
+
+        Ok(())
     }
 
-    fn get_u8(&mut self, mmu: &mut Mmu, operand: InstructionOperand) -> u8 {
+    fn get_u8<M: Memory>(
+        &mut self,
+        mem: &mut M,
+        operand: InstructionOperand,
+    ) -> Result<u8, CpuError> {
         match operand {
             InstructionOperand::Register(reg) => self.get_reg_u8(reg),
-            InstructionOperand::Immediate8(val) => val,
+            InstructionOperand::Immediate8(val) => Ok(val),
+            InstructionOperand::Immediate16(_) => Err(CpuError::ImmediateSizeMismatch),
             InstructionOperand::OffsetMemoryLocationRegister(offset, reg) => {
-                mmu.read(self.get_reg_u16(reg).wrapping_add(offset))
+                Ok(mem.read(self.get_reg_u16(reg)?.wrapping_add(offset))?)
             }
-            InstructionOperand::MemoryLocationRegister(reg) => mmu.read(self.get_reg_u16(reg)),
+            InstructionOperand::MemoryLocationRegister(reg) => {
+                Ok(mem.read(self.get_reg_u16(reg)?)?)
+            }
             InstructionOperand::MemoryLocationRegisterDecrement(reg) => {
-                let value = mmu.read(self.get_reg_u16(reg));
-                let reg_value = self.get_reg_u16(reg).wrapping_sub(1);
-                self.set_reg_u16(reg, reg_value);
-                value
+                let value = mem.read(self.get_reg_u16(reg)?)?;
+                let reg_value = self.get_reg_u16(reg)?.wrapping_sub(1);
+                self.set_reg_u16(reg, reg_value)?;
+                Ok(value)
             }
             InstructionOperand::MemoryLocationRegisterIncrement(reg) => {
-                let value = mmu.read(self.get_reg_u16(reg));
-                let reg_value = self.get_reg_u16(reg).wrapping_add(1);
-                self.set_reg_u16(reg, reg_value);
-                value
+                let value = mem.read(self.get_reg_u16(reg)?)?;
+                let reg_value = self.get_reg_u16(reg)?.wrapping_add(1);
+                self.set_reg_u16(reg, reg_value)?;
+                Ok(value)
             }
-            InstructionOperand::MemoryLocationImmediate16(address) => mmu.read(address),
-            _ => panic!("tried to get u8 value of {:?}", &operand),
+            InstructionOperand::MemoryLocationImmediate16(address) => Ok(mem.read(address)?),
         }
     }
 
-    fn set_u8(&mut self, mmu: &mut Mmu, operand: InstructionOperand, value: u8) {
+    fn set_u8<M: Memory>(
+        &mut self,
+        mem: &mut M,
+        operand: InstructionOperand,
+        value: u8,
+    ) -> Result<(), CpuError> {
         match operand {
             InstructionOperand::Register(reg) => self.set_reg_u8(reg, value),
             InstructionOperand::OffsetMemoryLocationRegister(offset, reg) => {
-                mmu.write(self.get_reg_u16(reg).wrapping_add(offset), value)
+                Ok(mem.write(self.get_reg_u16(reg)?.wrapping_add(offset), value)?)
             }
             InstructionOperand::MemoryLocationRegister(reg) => {
-                mmu.write(self.get_reg_u16(reg), value)
+                Ok(mem.write(self.get_reg_u16(reg)?, value)?)
             }
             InstructionOperand::MemoryLocationRegisterDecrement(reg) => {
-                mmu.write(self.get_reg_u16(reg), value);
-                let reg_value = self.get_reg_u16(reg).wrapping_sub(1);
-                self.set_reg_u16(reg, reg_value);
+                mem.write(self.get_reg_u16(reg)?, value)?;
+                let reg_value = self.get_reg_u16(reg)?.wrapping_sub(1);
+                self.set_reg_u16(reg, reg_value)?;
+                Ok(())
             }
             InstructionOperand::MemoryLocationRegisterIncrement(reg) => {
-                mmu.write(self.get_reg_u16(reg), value);
-                let reg_value = self.get_reg_u16(reg).wrapping_add(1);
-                self.set_reg_u16(reg, reg_value);
+                mem.write(self.get_reg_u16(reg)?, value)?;
+                let reg_value = self.get_reg_u16(reg)?.wrapping_add(1);
+                self.set_reg_u16(reg, reg_value)?;
+                Ok(())
             }
-            InstructionOperand::MemoryLocationImmediate16(address) => mmu.write(address, value),
-            _ => panic!("tried to set u8 value of {:?}", &operand),
+            InstructionOperand::MemoryLocationImmediate16(address) => {
+                Ok(mem.write(address, value)?)
+            }
+            InstructionOperand::Immediate8(_) => Err(CpuError::ImmediateWrite),
+            InstructionOperand::Immediate16(_) => Err(CpuError::ImmediateWrite),
         }
     }
 
-    fn get_u16(&mut self, mmu: &mut Mmu, operand: InstructionOperand) -> u16 {
+    fn get_u16<M: Memory>(
+        &mut self,
+        mem: &mut M,
+        operand: InstructionOperand,
+    ) -> Result<u16, CpuError> {
         match operand {
             InstructionOperand::Register(reg) => self.get_reg_u16(reg),
-            InstructionOperand::Immediate8(val) => val as u16,
-            InstructionOperand::Immediate16(val) => val,
+            InstructionOperand::Immediate8(val) => Ok(val as u16),
+            InstructionOperand::Immediate16(val) => Ok(val),
             InstructionOperand::OffsetMemoryLocationRegister(offset, reg) => {
-                mmu.read(self.get_reg_u16(reg).wrapping_add(offset)) as u16
+                Ok(mem.read(self.get_reg_u16(reg)?.wrapping_add(offset))? as u16)
             }
             InstructionOperand::MemoryLocationRegister(reg) => {
-                mmu.read(self.get_reg_u16(reg)) as u16
+                Ok(mem.read(self.get_reg_u16(reg)?)? as u16)
             }
             InstructionOperand::MemoryLocationRegisterDecrement(reg) => {
-                let value = mmu.read(self.get_reg_u16(reg)) as u16;
-                let reg_value = self.get_reg_u16(reg).wrapping_sub(1);
-                self.set_reg_u16(reg, reg_value);
-                value
+                let value = mem.read(self.get_reg_u16(reg)?)? as u16;
+                let reg_value = self.get_reg_u16(reg)?.wrapping_sub(1);
+                self.set_reg_u16(reg, reg_value)?;
+                Ok(value)
             }
             InstructionOperand::MemoryLocationRegisterIncrement(reg) => {
-                let value = mmu.read(self.get_reg_u16(reg)) as u16;
-                let reg_value = self.get_reg_u16(reg).wrapping_add(1);
-                self.set_reg_u16(reg, reg_value);
-                value
+                let value = mem.read(self.get_reg_u16(reg)?)? as u16;
+                let reg_value = self.get_reg_u16(reg)?.wrapping_add(1);
+                self.set_reg_u16(reg, reg_value)?;
+                Ok(value)
             }
-            InstructionOperand::MemoryLocationImmediate16(address) => mmu.read(address) as u16,
+            InstructionOperand::MemoryLocationImmediate16(address) => Ok(mem.read(address)? as u16),
         }
     }
 
-    fn set_u16(&mut self, operand: InstructionOperand, value: u16) {
+    fn set_u16(&mut self, operand: InstructionOperand, value: u16) -> Result<(), CpuError> {
         match operand {
             InstructionOperand::Register(reg) => self.set_reg_u16(reg, value),
-            _ => panic!("tried to set u16 value of {:?}", &operand),
+            InstructionOperand::Immediate8(_) => Err(CpuError::ImmediateWrite),
+            InstructionOperand::Immediate16(_) => Err(CpuError::ImmediateWrite),
+            _ => Err(CpuError::OperandSizeMismatch {
+                operand,
+                op: MemoryOperation::Write,
+            }),
         }
     }
+}
 
-    pub fn exec_next_instruction(&mut self, mmu: &mut Mmu) -> usize {
+impl Cpu {
+    pub fn exec_next_instruction<M: Memory>(&mut self, mem: &mut M) -> Result<usize, CpuError> {
         let instruction = self
-            .fetch_instruction(mmu)
+            .fetch_instruction(mem)
             .expect("trying to execute an unrecognized instruction");
-        self.exec_instruction(mmu, instruction)
+        self.exec_instruction(mem, instruction)
     }
 
-    pub fn exec_instruction(&mut self, mmu: &mut Mmu, instruction: Instruction) -> usize {
+    pub fn exec_instruction<M: Memory>(
+        &mut self,
+        mem: &mut M,
+        instruction: Instruction,
+    ) -> Result<usize, CpuError> {
         let mut cycles = instruction.cycles();
 
         match instruction {
             Instruction::Noop => {}
             Instruction::Load(to, from) => {
                 if to.is_16bit() {
-                    let val = self.get_u16(mmu, from);
-                    self.set_u16(to, val);
+                    let val = self.get_u16(mem, from)?;
+                    self.set_u16(to, val)?;
                 } else {
-                    let val = self.get_u8(mmu, from);
-                    self.set_u8(mmu, to, val);
+                    let val = self.get_u8(mem, from)?;
+                    self.set_u8(mem, to, val)?;
                 }
             }
             Instruction::Xor(from) => {
-                self.a ^= self.get_u8(mmu, from);
+                self.a ^= self.get_u8(mem, from)?;
 
                 self.set_flag(CpuFlag::Zero, self.a == 0);
                 self.set_flag(CpuFlag::Subtraction, false);
@@ -305,7 +378,7 @@ impl Cpu {
                 self.set_flag(CpuFlag::Carry, false);
             }
             Instruction::Bit(bit, from) => {
-                let set = self.get_u8(mmu, from) & (1 << bit) != 0;
+                let set = self.get_u8(mem, from)? & (1 << bit) != 0;
 
                 self.set_flag(CpuFlag::Zero, !set);
                 self.set_flag(CpuFlag::Subtraction, false);
@@ -322,12 +395,12 @@ impl Cpu {
             }
             Instruction::Increment(to) => {
                 if to.is_16bit() {
-                    let val = self.get_u16(mmu, to).wrapping_add(1);
-                    self.set_u16(to, val);
+                    let val = self.get_u16(mem, to)?.wrapping_add(1);
+                    self.set_u16(to, val)?;
                 } else {
-                    let ov = self.get_u8(mmu, to);
+                    let ov = self.get_u8(mem, to)?;
                     let val = ov.wrapping_add(1);
-                    self.set_u8(mmu, to, val);
+                    self.set_u8(mem, to, val)?;
 
                     self.set_flag(CpuFlag::Zero, val == 0);
                     self.set_flag(CpuFlag::Subtraction, false);
@@ -336,12 +409,12 @@ impl Cpu {
             }
             Instruction::Decrement(to) => {
                 if to.is_16bit() {
-                    let val = self.get_u16(mmu, to).wrapping_sub(1);
-                    self.set_u16(to, val);
+                    let val = self.get_u16(mem, to)?.wrapping_sub(1);
+                    self.set_u16(to, val)?;
                 } else {
-                    let ov = self.get_u8(mmu, to);
+                    let ov = self.get_u8(mem, to)?;
                     let val = ov.wrapping_sub(1);
-                    self.set_u8(mmu, to, val);
+                    self.set_u8(mem, to, val)?;
 
                     self.set_flag(CpuFlag::Zero, val == 0);
                     self.set_flag(CpuFlag::Subtraction, true);
@@ -349,25 +422,25 @@ impl Cpu {
                 }
             }
             Instruction::Call(address) => {
-                self.push_u16(mmu, self.pc);
+                self.push_u16(mem, self.pc)?;
                 self.pc = address;
             }
             Instruction::Push(reg) => {
-                let value = self.get_reg_u16(reg);
-                self.push_u16(mmu, value)
+                let value = self.get_reg_u16(reg)?;
+                self.push_u16(mem, value)?
             }
             Instruction::Pop(reg) => {
-                let value = self.pop_u16(mmu);
-                self.set_reg_u16(reg, value);
+                let value = self.pop_u16(mem)?;
+                self.set_reg_u16(reg, value)?;
             }
             Instruction::ExtendedRotateLeft(to) => {
                 let carry = self.get_flag(CpuFlag::Carry) as u8;
-                let previous = self.get_u8(mmu, to);
+                let previous = self.get_u8(mem, to)?;
 
                 self.set_flag(CpuFlag::Carry, previous & 0x80 != 0);
 
                 let value = previous << 1 | carry;
-                self.set_u8(mmu, to, value);
+                self.set_u8(mem, to, value)?;
 
                 self.set_flag(CpuFlag::Zero, value == 0);
                 self.set_flag(CpuFlag::Subtraction, false);
@@ -378,25 +451,25 @@ impl Cpu {
                 self.set_flag(CpuFlag::Carry, self.a & 0x80 != 0);
                 self.a = self.a << 1 | carry;
             }
-            Instruction::Return => self.pc = self.pop_u16(mmu),
+            Instruction::Return => self.pc = self.pop_u16(mem)?,
             Instruction::Compare(to) => {
-                let value = self.get_u8(mmu, to);
+                let value = self.get_u8(mem, to)?;
                 self.subtract_a(value, false);
             }
             Instruction::Subtract(from) => {
-                let value = self.get_u8(mmu, from);
+                let value = self.get_u8(mem, from)?;
                 self.a = self.subtract_a(value, false);
             }
             Instruction::Add(to, from) => {
                 let carry = 0; //self.get_flag(CpuFlag::Carry) as u8;
 
                 if to.is_16bit() {
-                    let value = self.get_reg_u16(to);
+                    let value = self.get_reg_u16(to)?;
                     let result = value
-                        .wrapping_add(self.get_u16(mmu, from))
+                        .wrapping_add(self.get_u16(mem, from)?)
                         .wrapping_add(carry as u16);
 
-                    self.set_reg_u16(to, result);
+                    self.set_reg_u16(to, result)?;
 
                     self.set_flag(CpuFlag::Subtraction, false);
                     self.set_flag(CpuFlag::HalfCarry, result & 0x10 != 0);
@@ -409,12 +482,12 @@ impl Cpu {
                         self.set_flag(CpuFlag::Zero, false);
                     }
                 } else {
-                    let value = self.get_reg_u8(to);
+                    let value = self.get_reg_u8(to)?;
                     let result = value
-                        .wrapping_add(self.get_u8(mmu, from))
+                        .wrapping_add(self.get_u8(mem, from)?)
                         .wrapping_add(carry);
 
-                    self.set_reg_u8(to, result);
+                    self.set_reg_u8(to, result)?;
 
                     self.set_flag(CpuFlag::Zero, result == 0);
                     self.set_flag(CpuFlag::Subtraction, false);
@@ -428,7 +501,7 @@ impl Cpu {
             _ => panic!("unimplemented instruction {:x?}", instruction),
         }
 
-        cycles
+        Ok(cycles)
     }
 
     fn subtract_a(&mut self, value: u8, carry: bool) -> u8 {
@@ -450,215 +523,227 @@ impl Cpu {
 
         result
     }
+}
 
-    pub fn fetch_instruction(&mut self, mmu: &mut Mmu) -> Option<Instruction> {
-        let opcode = self.fetch_u8(mmu);
+impl Cpu {
+    pub fn fetch_instruction<M: Memory>(
+        &mut self,
+        mem: &mut M,
+    ) -> Result<Instruction, InstructionError> {
+        let opcode = self.fetch_u8(mem)?;
 
         match opcode {
-            0x00 => Some(Instruction::Noop),
-            0x02 => Some(Instruction::Load(
+            0x00 => Ok(Instruction::Noop),
+            0x02 => Ok(Instruction::Load(
                 InstructionOperand::MemoryLocationRegister(CpuRegister::BC),
                 InstructionOperand::Register(CpuRegister::A),
             )),
-            0x04 => Some(Instruction::Increment(InstructionOperand::Register(
+            0x04 => Ok(Instruction::Increment(InstructionOperand::Register(
                 CpuRegister::B,
             ))),
-            0x05 => Some(Instruction::Decrement(InstructionOperand::Register(
+            0x05 => Ok(Instruction::Decrement(InstructionOperand::Register(
                 CpuRegister::B,
             ))),
-            0x06 => Some(Instruction::Load(
+            0x06 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::B),
-                InstructionOperand::Immediate8(self.fetch_u8(mmu)),
+                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
             )),
-            0x0c => Some(Instruction::Increment(InstructionOperand::Register(
+            0x0c => Ok(Instruction::Increment(InstructionOperand::Register(
                 CpuRegister::C,
             ))),
-            0x0d => Some(Instruction::Decrement(InstructionOperand::Register(
+            0x0d => Ok(Instruction::Decrement(InstructionOperand::Register(
                 CpuRegister::C,
             ))),
-            0x0e => Some(Instruction::Load(
+            0x0e => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::C),
-                InstructionOperand::Immediate8(self.fetch_u8(mmu)),
+                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
             )),
-            0x11 => Some(Instruction::Load(
+            0x11 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::DE),
-                InstructionOperand::Immediate16(self.fetch_u16(mmu)),
+                InstructionOperand::Immediate16(self.fetch_u16(mem)?),
             )),
-            0x13 => Some(Instruction::Increment(InstructionOperand::Register(
+            0x13 => Ok(Instruction::Increment(InstructionOperand::Register(
                 CpuRegister::DE,
             ))),
-            0x15 => Some(Instruction::Decrement(InstructionOperand::Register(
+            0x15 => Ok(Instruction::Decrement(InstructionOperand::Register(
                 CpuRegister::D,
             ))),
-            0x16 => Some(Instruction::Load(
+            0x16 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::D),
-                InstructionOperand::Immediate8(self.fetch_u8(mmu)),
+                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
             )),
-            0x17 => Some(Instruction::RotateLeftA),
-            0x18 => Some(Instruction::JumpRelative(self.fetch_u8(mmu) as i8)),
-            0x1a => Some(Instruction::Load(
+            0x17 => Ok(Instruction::RotateLeftA),
+            0x18 => Ok(Instruction::JumpRelative(self.fetch_u8(mem)? as i8)),
+            0x1a => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::A),
                 InstructionOperand::MemoryLocationRegister(CpuRegister::DE),
             )),
-            0x1d => Some(Instruction::Decrement(InstructionOperand::Register(
+            0x1d => Ok(Instruction::Decrement(InstructionOperand::Register(
                 CpuRegister::E,
             ))),
-            0x1e => Some(Instruction::Load(
+            0x1e => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::E),
-                InstructionOperand::Immediate8(self.fetch_u8(mmu)),
+                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
             )),
-            0x20 => Some(Instruction::JumpRelativeIf(
+            0x20 => Ok(Instruction::JumpRelativeIf(
                 CpuFlag::Zero,
                 false,
-                self.fetch_u8(mmu) as i8,
+                self.fetch_u8(mem)? as i8,
             )),
-            0x21 => Some(Instruction::Load(
+            0x21 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::HL),
-                InstructionOperand::Immediate16(self.fetch_u16(mmu)),
+                InstructionOperand::Immediate16(self.fetch_u16(mem)?),
             )),
-            0x22 => Some(Instruction::Load(
+            0x22 => Ok(Instruction::Load(
                 InstructionOperand::MemoryLocationRegisterIncrement(CpuRegister::HL),
                 InstructionOperand::Register(CpuRegister::A),
             )),
-            0x23 => Some(Instruction::Increment(InstructionOperand::Register(
+            0x23 => Ok(Instruction::Increment(InstructionOperand::Register(
                 CpuRegister::HL,
             ))),
-            0x24 => Some(Instruction::Increment(InstructionOperand::Register(
+            0x24 => Ok(Instruction::Increment(InstructionOperand::Register(
                 CpuRegister::H,
             ))),
-            0x28 => Some(Instruction::JumpRelativeIf(
+            0x28 => Ok(Instruction::JumpRelativeIf(
                 CpuFlag::Zero,
                 true,
-                self.fetch_u8(mmu) as i8,
+                self.fetch_u8(mem)? as i8,
             )),
-            0x2e => Some(Instruction::Load(
+            0x2e => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::L),
-                InstructionOperand::Immediate8(self.fetch_u8(mmu)),
+                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
             )),
-            0x31 => Some(Instruction::Load(
+            0x31 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::SP),
-                InstructionOperand::Immediate16(self.fetch_u16(mmu)),
+                InstructionOperand::Immediate16(self.fetch_u16(mem)?),
             )),
-            0x32 => Some(Instruction::Load(
+            0x32 => Ok(Instruction::Load(
                 InstructionOperand::MemoryLocationRegisterDecrement(CpuRegister::HL),
                 InstructionOperand::Register(CpuRegister::A),
             )),
-            0x3d => Some(Instruction::Decrement(InstructionOperand::Register(
+            0x3d => Ok(Instruction::Decrement(InstructionOperand::Register(
                 CpuRegister::A,
             ))),
-            0x3e => Some(Instruction::Load(
+            0x3e => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::Immediate8(self.fetch_u8(mmu)),
+                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
             )),
-            0x4f => Some(Instruction::Load(
+            0x4f => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::C),
                 InstructionOperand::Register(CpuRegister::A),
             )),
-            0x57 => Some(Instruction::Load(
+            0x57 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::D),
                 InstructionOperand::Register(CpuRegister::A),
             )),
-            0x67 => Some(Instruction::Load(
+            0x67 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::H),
                 InstructionOperand::Register(CpuRegister::A),
             )),
-            0x77 => Some(Instruction::Load(
+            0x77 => Ok(Instruction::Load(
                 InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
                 InstructionOperand::Register(CpuRegister::A),
             )),
-            0x78 => Some(Instruction::Load(
+            0x78 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::A),
                 InstructionOperand::Register(CpuRegister::B),
             )),
-            0x7b => Some(Instruction::Load(
+            0x7b => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::A),
                 InstructionOperand::Register(CpuRegister::E),
             )),
-            0x7c => Some(Instruction::Load(
+            0x7c => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::A),
                 InstructionOperand::Register(CpuRegister::H),
             )),
-            0x7d => Some(Instruction::Load(
+            0x7d => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::A),
                 InstructionOperand::Register(CpuRegister::L),
             )),
-            0x86 => Some(Instruction::Add(
+            0x86 => Ok(Instruction::Add(
                 CpuRegister::A,
                 InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
             )),
-            0x90 => Some(Instruction::Subtract(InstructionOperand::Register(
+            0x90 => Ok(Instruction::Subtract(InstructionOperand::Register(
                 CpuRegister::B,
             ))),
-            0xaf => Some(Instruction::Xor(InstructionOperand::Register(
+            0xaf => Ok(Instruction::Xor(InstructionOperand::Register(
                 CpuRegister::A,
             ))),
-            0xbe => Some(Instruction::Compare(
+            0xbe => Ok(Instruction::Compare(
                 InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
             )),
-            0xc1 => Some(Instruction::Pop(CpuRegister::BC)),
-            0xc5 => Some(Instruction::Push(CpuRegister::BC)),
-            0xc9 => Some(Instruction::Return),
-            0xcb => self.fetch_extended_instruction(mmu),
-            0xcd => Some(Instruction::Call(self.fetch_u16(mmu))),
-            0xe0 => Some(Instruction::Load(
-                InstructionOperand::MemoryLocationImmediate16(0xff00 + self.fetch_u8(mmu) as u16),
+            0xc1 => Ok(Instruction::Pop(CpuRegister::BC)),
+            0xc5 => Ok(Instruction::Push(CpuRegister::BC)),
+            0xc9 => Ok(Instruction::Return),
+            0xcb => self.fetch_extended_instruction(mem),
+            0xcd => Ok(Instruction::Call(self.fetch_u16(mem)?)),
+            0xe0 => Ok(Instruction::Load(
+                InstructionOperand::MemoryLocationImmediate16(0xff00 + self.fetch_u8(mem)? as u16),
                 InstructionOperand::Register(CpuRegister::A),
             )),
-            0xe2 => Some(Instruction::Load(
+            0xe2 => Ok(Instruction::Load(
                 InstructionOperand::OffsetMemoryLocationRegister(0xff00, CpuRegister::C),
                 InstructionOperand::Register(CpuRegister::A),
             )),
-            0xea => Some(Instruction::Load(
-                InstructionOperand::MemoryLocationImmediate16(self.fetch_u16(mmu)),
+            0xea => Ok(Instruction::Load(
+                InstructionOperand::MemoryLocationImmediate16(self.fetch_u16(mem)?),
                 InstructionOperand::Register(CpuRegister::A),
             )),
-            0xf0 => Some(Instruction::Load(
+            0xf0 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::MemoryLocationImmediate16(0xff00 + self.fetch_u8(mmu) as u16),
+                InstructionOperand::MemoryLocationImmediate16(0xff00 + self.fetch_u8(mem)? as u16),
             )),
-            0xfe => Some(Instruction::Compare(InstructionOperand::Immediate8(
-                self.fetch_u8(mmu),
+            0xfe => Ok(Instruction::Compare(InstructionOperand::Immediate8(
+                self.fetch_u8(mem)?,
             ))),
-            _ => None,
+            _ => Err(InstructionError::InvalidOpcode {
+                opcode: opcode as u16,
+            }),
         }
     }
 
-    fn fetch_extended_instruction(&mut self, mmu: &mut Mmu) -> Option<Instruction> {
-        let opcode = self.fetch_u8(mmu);
+    fn fetch_extended_instruction<M: Memory>(
+        &mut self,
+        mem: &mut M,
+    ) -> Result<Instruction, InstructionError> {
+        let opcode = self.fetch_u8(mem)?;
 
         match opcode {
-            0x11 => Some(Instruction::ExtendedRotateLeft(
+            0x11 => Ok(Instruction::ExtendedRotateLeft(
                 InstructionOperand::Register(CpuRegister::C),
             )),
-            0x7c => Some(Instruction::Bit(
+            0x7c => Ok(Instruction::Bit(
                 7,
                 InstructionOperand::Register(CpuRegister::H),
             )),
-            _ => None,
+            _ => Err(InstructionError::InvalidOpcode {
+                opcode: opcode as u16 + 0xcb00,
+            }),
         }
     }
 
-    fn fetch_u8(&mut self, mmu: &mut Mmu) -> u8 {
-        let ret = mmu.read(self.pc);
+    fn fetch_u8<M: Memory>(&mut self, mem: &mut M) -> Result<u8, MemoryError> {
+        let ret = mem.read(self.pc)?;
         self.pc = self.pc.wrapping_add(1);
-        ret
+        Ok(ret)
     }
 
-    fn fetch_u16(&mut self, mmu: &mut Mmu) -> u16 {
-        let ret = (mmu.read(self.pc + 1) as u16) << 8 | (mmu.read(self.pc) as u16);
+    fn fetch_u16<M: Memory>(&mut self, mem: &mut M) -> Result<u16, MemoryError> {
+        let ret = (mem.read(self.pc + 1)? as u16) << 8 | (mem.read(self.pc)? as u16);
         self.pc = self.pc.wrapping_add(2);
-        ret
+        Ok(ret)
     }
 
-    pub fn disassemble(&mut self, mmu: &mut Mmu, max: u16) -> BTreeMap<u16, String> {
+    pub fn disassemble<M: Memory>(&mut self, mem: &mut M, max: u16) -> BTreeMap<u16, String> {
         let old_pc = self.pc;
         let mut res = BTreeMap::new();
 
         self.pc = 0;
         let mut pc = 0;
         while !res.contains_key(&pc) && pc < max {
-            let instruction = self.fetch_instruction(mmu);
-            if let Some(instruction) = instruction {
+            let instruction = self.fetch_instruction(mem);
+            if let Ok(instruction) = instruction {
                 res.insert(pc, format!("{}", instruction));
             } else {
                 res.insert(pc, "<unknown>".to_string());
