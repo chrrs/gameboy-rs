@@ -593,291 +593,157 @@ impl Cpu {
     ) -> Result<Instruction, InstructionError> {
         let opcode = self.fetch_u8(mem)?;
 
+        macro_rules! instr_operand {
+            (( R $reg:ident )) => {
+                CpuRegister::$reg
+            };
+            (( :R $reg:ident )) => {
+                InstructionOperand::Register(CpuRegister::$reg)
+            };
+            (( @R $reg:ident )) => {
+                InstructionOperand::MemoryLocationRegister(CpuRegister::$reg)
+            };
+            (( @R $reg:ident $offset:expr )) => {
+                InstructionOperand::OffsetMemoryLocationRegister($offset, CpuRegister::$reg)
+            };
+            (( @R+ $reg:ident )) => {
+                InstructionOperand::MemoryLocationRegisterIncrement(CpuRegister::$reg)
+            };
+            (( @R- $reg:ident )) => {
+                InstructionOperand::MemoryLocationRegisterDecrement(CpuRegister::$reg)
+            };
+            (( @IMM16 )) => {
+                InstructionOperand::MemoryLocationImmediate16(self.fetch_u16(mem)?)
+            };
+            (( @IMM8 $offset:expr )) => {
+                InstructionOperand::OffsetMemoryLocationImmediate8($offset, self.fetch_u8(mem)?)
+            };
+            (( F $flag:ident )) => {
+                CpuFlag::$flag
+            };
+            ( REL8 ) => {
+                self.fetch_u8(mem)? as i8
+            };
+            ( ABS16 ) => {
+                self.fetch_u16(mem)?
+            };
+            ( IMM8 ) => {
+                InstructionOperand::Immediate8(self.fetch_u8(mem)?)
+            };
+            ( IMM16 ) => {
+                InstructionOperand::Immediate16(self.fetch_u16(mem)?)
+            };
+            (( = $e:expr )) => {
+                $e
+            };
+        }
+
+        macro_rules! instr {
+            ( $op:ident ) => {
+                Ok(Instruction::$op)
+            };
+            ( $op:ident $($b:tt)* ) => {
+                Ok(Instruction::$op($(instr_operand!($b)),*))
+            };
+        }
+
         match opcode {
-            0x00 => Ok(Instruction::Noop),
-            0x01 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::BC),
-                InstructionOperand::Immediate16(self.fetch_u16(mem)?),
-            )),
-            0x02 => Ok(Instruction::Load(
-                InstructionOperand::MemoryLocationRegister(CpuRegister::BC),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0x04 => Ok(Instruction::Increment(InstructionOperand::Register(
-                CpuRegister::B,
-            ))),
-            0x05 => Ok(Instruction::Decrement(InstructionOperand::Register(
-                CpuRegister::B,
-            ))),
-            0x06 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::B),
-                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
-            )),
-            0x0b => Ok(Instruction::Decrement(InstructionOperand::Register(
-                CpuRegister::BC,
-            ))),
-            0x0c => Ok(Instruction::Increment(InstructionOperand::Register(
-                CpuRegister::C,
-            ))),
-            0x0d => Ok(Instruction::Decrement(InstructionOperand::Register(
-                CpuRegister::C,
-            ))),
-            0x0e => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::C),
-                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
-            )),
-            0x11 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::DE),
-                InstructionOperand::Immediate16(self.fetch_u16(mem)?),
-            )),
-            0x13 => Ok(Instruction::Increment(InstructionOperand::Register(
-                CpuRegister::DE,
-            ))),
-            0x15 => Ok(Instruction::Decrement(InstructionOperand::Register(
-                CpuRegister::D,
-            ))),
-            0x16 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::D),
-                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
-            )),
-            0x17 => Ok(Instruction::RotateLeftA),
-            0x18 => Ok(Instruction::JumpRelative(self.fetch_u8(mem)? as i8)),
-            0x1a => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::MemoryLocationRegister(CpuRegister::DE),
-            )),
-            0x1d => Ok(Instruction::Decrement(InstructionOperand::Register(
-                CpuRegister::E,
-            ))),
-            0x1e => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::E),
-                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
-            )),
-            0x20 => Ok(Instruction::JumpRelativeIf(
-                CpuFlag::Zero,
-                false,
-                self.fetch_u8(mem)? as i8,
-            )),
-            0x21 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::HL),
-                InstructionOperand::Immediate16(self.fetch_u16(mem)?),
-            )),
-            0x22 => Ok(Instruction::Load(
-                InstructionOperand::MemoryLocationRegisterIncrement(CpuRegister::HL),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0x23 => Ok(Instruction::Increment(InstructionOperand::Register(
-                CpuRegister::HL,
-            ))),
-            0x24 => Ok(Instruction::Increment(InstructionOperand::Register(
-                CpuRegister::H,
-            ))),
-            0x28 => Ok(Instruction::JumpRelativeIf(
-                CpuFlag::Zero,
-                true,
-                self.fetch_u8(mem)? as i8,
-            )),
-            0x2a => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::MemoryLocationRegisterIncrement(CpuRegister::HL),
-            )),
-            0x2e => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::L),
-                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
-            )),
-            0x2f => Ok(Instruction::Complement),
-            0x31 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::SP),
-                InstructionOperand::Immediate16(self.fetch_u16(mem)?),
-            )),
-            0x32 => Ok(Instruction::Load(
-                InstructionOperand::MemoryLocationRegisterDecrement(CpuRegister::HL),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0x36 => Ok(Instruction::Load(
-                InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
-                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
-            )),
-            0x3d => Ok(Instruction::Decrement(InstructionOperand::Register(
-                CpuRegister::A,
-            ))),
-            0x3e => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::Immediate8(self.fetch_u8(mem)?),
-            )),
-            0x47 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::B),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0x4f => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::C),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0x57 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::D),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0x67 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::H),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0x77 => Ok(Instruction::Load(
-                InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0x78 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::Register(CpuRegister::B),
-            )),
-            0x7b => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::Register(CpuRegister::E),
-            )),
-            0x7c => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::Register(CpuRegister::H),
-            )),
-            0x7d => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::Register(CpuRegister::L),
-            )),
-            0x86 => Ok(Instruction::Add(
-                CpuRegister::A,
-                InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
-            )),
-            0x90 => Ok(Instruction::Subtract(InstructionOperand::Register(
-                CpuRegister::B,
-            ))),
-            0xa0 => Ok(Instruction::And(InstructionOperand::Register(
-                CpuRegister::B,
-            ))),
-            0xa1 => Ok(Instruction::And(InstructionOperand::Register(
-                CpuRegister::C,
-            ))),
-            0xa2 => Ok(Instruction::And(InstructionOperand::Register(
-                CpuRegister::D,
-            ))),
-            0xa3 => Ok(Instruction::And(InstructionOperand::Register(
-                CpuRegister::E,
-            ))),
-            0xa4 => Ok(Instruction::And(InstructionOperand::Register(
-                CpuRegister::H,
-            ))),
-            0xa5 => Ok(Instruction::And(InstructionOperand::Register(
-                CpuRegister::L,
-            ))),
-            0xa6 => Ok(Instruction::And(
-                InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
-            )),
-            0xa7 => Ok(Instruction::And(InstructionOperand::Register(
-                CpuRegister::A,
-            ))),
-            0xa8 => Ok(Instruction::Xor(InstructionOperand::Register(
-                CpuRegister::B,
-            ))),
-            0xa9 => Ok(Instruction::Xor(InstructionOperand::Register(
-                CpuRegister::C,
-            ))),
-            0xaa => Ok(Instruction::Xor(InstructionOperand::Register(
-                CpuRegister::D,
-            ))),
-            0xab => Ok(Instruction::Xor(InstructionOperand::Register(
-                CpuRegister::E,
-            ))),
-            0xac => Ok(Instruction::Xor(InstructionOperand::Register(
-                CpuRegister::H,
-            ))),
-            0xad => Ok(Instruction::Xor(InstructionOperand::Register(
-                CpuRegister::L,
-            ))),
-            0xae => Ok(Instruction::Xor(
-                InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
-            )),
-            0xaf => Ok(Instruction::Xor(InstructionOperand::Register(
-                CpuRegister::A,
-            ))),
-            0xb0 => Ok(Instruction::Or(InstructionOperand::Register(
-                CpuRegister::B,
-            ))),
-            0xb1 => Ok(Instruction::Or(InstructionOperand::Register(
-                CpuRegister::C,
-            ))),
-            0xb2 => Ok(Instruction::Or(InstructionOperand::Register(
-                CpuRegister::D,
-            ))),
-            0xb3 => Ok(Instruction::Or(InstructionOperand::Register(
-                CpuRegister::E,
-            ))),
-            0xb4 => Ok(Instruction::Or(InstructionOperand::Register(
-                CpuRegister::H,
-            ))),
-            0xb5 => Ok(Instruction::Or(InstructionOperand::Register(
-                CpuRegister::L,
-            ))),
-            0xb6 => Ok(Instruction::Or(InstructionOperand::MemoryLocationRegister(
-                CpuRegister::HL,
-            ))),
-            0xb7 => Ok(Instruction::Or(InstructionOperand::Register(
-                CpuRegister::A,
-            ))),
-            0xbe => Ok(Instruction::Compare(
-                InstructionOperand::MemoryLocationRegister(CpuRegister::HL),
-            )),
-            0xc1 => Ok(Instruction::Pop(CpuRegister::BC)),
-            0xc3 => Ok(Instruction::Jump(self.fetch_u16(mem)?)),
-            0xc5 => Ok(Instruction::Push(CpuRegister::BC)),
-            0xc9 => Ok(Instruction::Return),
-            0xcb => self.fetch_extended_instruction(mem),
-            0xcd => Ok(Instruction::Call(self.fetch_u16(mem)?)),
-            0xe0 => Ok(Instruction::Load(
-                InstructionOperand::OffsetMemoryLocationImmediate8(0xff00, self.fetch_u8(mem)?),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0xe2 => Ok(Instruction::Load(
-                InstructionOperand::OffsetMemoryLocationRegister(0xff00, CpuRegister::C),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0xe6 => Ok(Instruction::And(InstructionOperand::Immediate8(
-                self.fetch_u8(mem)?,
-            ))),
-            0xea => Ok(Instruction::Load(
-                InstructionOperand::MemoryLocationImmediate16(self.fetch_u16(mem)?),
-                InstructionOperand::Register(CpuRegister::A),
-            )),
-            0xf0 => Ok(Instruction::Load(
-                InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::OffsetMemoryLocationImmediate8(0xff00, self.fetch_u8(mem)?),
-            )),
-            0xf3 => Ok(Instruction::DisableInterrupts),
-            0xfb => Ok(Instruction::EnableInterrupts),
-            0xfe => Ok(Instruction::Compare(InstructionOperand::Immediate8(
-                self.fetch_u8(mem)?,
-            ))),
+            0x00 => instr!(Noop),
+            0x01 => instr!(Load (:R BC) IMM16),
+            0x02 => instr!(Load (@R BC) (:R A)),
+            0x04 => instr!(Increment (:R B)),
+            0x05 => instr!(Decrement (:R B)),
+            0x06 => instr!(Load (:R B) IMM8),
+            0x0b => instr!(Decrement (:R BC)),
+            0x0c => instr!(Increment (:R C)),
+            0x0d => instr!(Decrement (:R C)),
+            0x0e => instr!(Load (:R C) IMM8),
+            0x11 => instr!(Load (:R DE) IMM16),
+            0x13 => instr!(Increment (:R DE)),
+            0x15 => instr!(Decrement (:R D)),
+            0x16 => instr!(Load (:R D) IMM8),
+            0x17 => instr!(RotateLeftA),
+            0x18 => instr!(JumpRelative REL8),
+            0x1a => instr!(Load (:R A) (@R DE)),
+            0x1d => instr!(Decrement (:R E)),
+            0x1e => instr!(Load (:R E) IMM8),
+            0x20 => instr!(JumpRelativeIf (F Zero) (= false) REL8),
+            0x21 => instr!(Load (:R HL) IMM16),
+            0x22 => instr!(Load (@R+ HL) (:R A)),
+            0x23 => instr!(Increment (:R HL)),
+            0x24 => instr!(Increment (:R H)),
+            0x28 => instr!(JumpRelativeIf (F Zero) (= true) REL8),
+            0x2a => instr!(Load (:R A) (@R+ HL)),
+            0x2e => instr!(Load (:R L) IMM8),
+            0x2f => instr!(Complement),
+            0x31 => instr!(Load (:R SP) IMM16),
+            0x32 => instr!(Load (@R- HL) (:R A)),
+            0x36 => instr!(Load (@R HL) IMM8),
+            0x3d => instr!(Decrement (:R A)),
+            0x3e => instr!(Load (:R A) IMM8),
+            0x47 => instr!(Load (:R B) (:R A)),
+            0x4f => instr!(Load (:R C) (:R A)),
+            0x57 => instr!(Load (:R D) (:R A)),
+            0x67 => instr!(Load (:R H) (:R A)),
+            0x77 => instr!(Load (@R HL) (:R A)),
+            0x78 => instr!(Load (:R A) (:R B)),
+            0x7b => instr!(Load (:R A) (:R E)),
+            0x7c => instr!(Load (:R A) (:R H)),
+            0x7d => instr!(Load (:R A) (:R L)),
+            0x86 => instr!(Add (R A) (@R HL)),
+            0x90 => instr!(Subtract (:R B)),
+            0xa0 => instr!(And (:R B)),
+            0xa1 => instr!(And (:R C)),
+            0xa2 => instr!(And (:R D)),
+            0xa3 => instr!(And (:R E)),
+            0xa4 => instr!(And (:R H)),
+            0xa5 => instr!(And (:R L)),
+            0xa6 => instr!(And (@R HL)),
+            0xa7 => instr!(And (:R A)),
+            0xa8 => instr!(Xor (:R B)),
+            0xa9 => instr!(Xor (:R C)),
+            0xaa => instr!(Xor (:R D)),
+            0xab => instr!(Xor (:R E)),
+            0xac => instr!(Xor (:R H)),
+            0xad => instr!(Xor (:R L)),
+            0xae => instr!(Xor (@R HL)),
+            0xaf => instr!(Xor (:R A)),
+            0xb0 => instr!(Or (:R B)),
+            0xb1 => instr!(Or (:R C)),
+            0xb2 => instr!(Or (:R D)),
+            0xb3 => instr!(Or (:R E)),
+            0xb4 => instr!(Or (:R H)),
+            0xb5 => instr!(Or (:R L)),
+            0xb6 => instr!(Or (@R HL)),
+            0xb7 => instr!(Or (:R A)),
+            0xbe => instr!(Compare (@R HL)),
+            0xc1 => instr!(Pop (R BC)),
+            0xc3 => instr!(Jump ABS16),
+            0xc5 => instr!(Push (R BC)),
+            0xc9 => instr!(Return),
+            0xcb => {
+                let opcode = self.fetch_u8(mem)?;
+
+                match opcode {
+                    0x11 => instr!(ExtendedRotateLeft (:R C)),
+                    0x37 => instr!(Swap (:R A)),
+                    0x7c => instr!(Bit (= 7) (:R H)),
+                    _ => Err(InstructionError::InvalidOpcode {
+                        opcode: opcode as u16 + 0xcb00,
+                    }),
+                }
+            }
+            0xcd => instr!(Call ABS16),
+            0xe0 => instr!(Load (@IMM8 0xff00) (:R A)),
+            0xe2 => instr!(Load (@R C 0xff00) (:R A)),
+            0xe6 => instr!(And IMM8),
+            0xea => instr!(Load (@IMM16) (:R A)),
+            0xf0 => instr!(Load (:R A) (@IMM8 0xff00)),
+            0xf3 => instr!(DisableInterrupts),
+            0xfb => instr!(EnableInterrupts),
+            0xfe => instr!(Compare IMM8),
             _ => Err(InstructionError::InvalidOpcode {
                 opcode: opcode as u16,
-            }),
-        }
-    }
-
-    fn fetch_extended_instruction<M: Memory>(
-        &mut self,
-        mem: &mut M,
-    ) -> Result<Instruction, InstructionError> {
-        let opcode = self.fetch_u8(mem)?;
-
-        match opcode {
-            0x11 => Ok(Instruction::ExtendedRotateLeft(
-                InstructionOperand::Register(CpuRegister::C),
-            )),
-            0x37 => Ok(Instruction::Swap(InstructionOperand::Register(
-                CpuRegister::A,
-            ))),
-            0x7c => Ok(Instruction::Bit(
-                7,
-                InstructionOperand::Register(CpuRegister::H),
-            )),
-            _ => Err(InstructionError::InvalidOpcode {
-                opcode: opcode as u16 + 0xcb00,
             }),
         }
     }
