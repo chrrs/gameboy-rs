@@ -225,3 +225,95 @@ impl fmt::Display for Instruction {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU16, Ordering};
+
+    use crate::{
+        cpu::Cpu,
+        memory::{Memory, MemoryError},
+    };
+
+    const OPCODE_CYCLES: [usize; 256] = [
+        1, 3, 2, 2, 1, 1, 2, 1, 5, 2, 2, 2, 1, 1, 2, 1, 0, 3, 2, 2, 1, 1, 2, 1, 3, 2, 2, 2, 1, 1,
+        2, 1, 2, 3, 2, 2, 1, 1, 2, 1, 2, 2, 2, 2, 1, 1, 2, 1, 2, 3, 2, 2, 3, 3, 3, 1, 2, 2, 2, 2,
+        1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1,
+        1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 2, 2, 2, 0, 2,
+        1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1,
+        2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1,
+        1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 3, 3, 4, 3, 4, 2, 4, 2, 4, 3, 0, 3, 6, 2, 4, 2, 3,
+        3, 0, 3, 4, 2, 4, 2, 4, 3, 0, 3, 0, 2, 4, 3, 3, 2, 0, 0, 4, 2, 4, 4, 1, 4, 0, 0, 0, 2, 4,
+        3, 3, 2, 1, 0, 4, 2, 4, 3, 2, 4, 1, 0, 0, 2, 4,
+    ];
+
+    const EXTENDED_OPCODE_CYCLES: [usize; 256] = [
+        2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2,
+        4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2,
+        2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2,
+        2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2,
+        2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2,
+        4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2,
+        2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2,
+        2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+        2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    ];
+
+    struct InstructionMemory(pub AtomicU16);
+
+    impl Memory for InstructionMemory {
+        fn read(&self, _address: u16) -> Result<u8, MemoryError> {
+            Ok(self
+                .0
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x >> 8))
+                .unwrap() as u8)
+        }
+
+        fn write(&mut self, _address: u16, _value: u8) -> Result<(), MemoryError> {
+            unreachable!()
+        }
+    }
+
+    #[test]
+    fn instruction_cycles() {
+        let mut memory = InstructionMemory(AtomicU16::new(0));
+        let mut cpu = Cpu::new();
+
+        for opcode in 0..=0xff {
+            memory.0.store(opcode, Ordering::SeqCst);
+            let instruction = cpu.fetch_instruction(&mut memory);
+
+            if let Ok(instruction) = instruction {
+                assert_eq!(
+                    instruction.cycles(),
+                    OPCODE_CYCLES[opcode as usize],
+                    "incorrect cycle count for opcode {:#04x} ({})",
+                    opcode,
+                    instruction
+                )
+            }
+        }
+    }
+
+    #[test]
+    fn extended_instruction_cycles() {
+        let mut memory = InstructionMemory(AtomicU16::new(0));
+        let mut cpu = Cpu::new();
+
+        for opcode in 0x00..=0xff {
+            let opcode = opcode << 8 | 0xcb;
+            memory.0.store(opcode, Ordering::SeqCst);
+            let instruction = cpu.fetch_instruction(&mut memory);
+
+            if let Ok(instruction) = instruction {
+                assert_eq!(
+                    instruction.cycles(),
+                    EXTENDED_OPCODE_CYCLES[opcode as usize >> 8],
+                    "incorrect cycle count for opcode {:#06x} ({})",
+                    opcode,
+                    instruction
+                )
+            }
+        }
+    }
+}
