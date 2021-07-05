@@ -158,6 +158,7 @@ pub enum Instruction {
     Xor(InstructionOperand),
     Bit(u8, InstructionOperand),
     Jump(InstructionOperand),
+    JumpIf(CpuFlag, bool, u16),
     JumpRelative(i8),
     JumpRelativeIf(CpuFlag, bool, i8),
     Increment(InstructionOperand),
@@ -165,15 +166,17 @@ pub enum Instruction {
     Call(u16),
     CallIf(CpuFlag, bool, u16),
     Compare(InstructionOperand),
-    Add(CpuRegister, InstructionOperand),
+    Add(CpuRegister, InstructionOperand, bool),
     Subtract(InstructionOperand),
     Push(CpuRegister),
     Pop(CpuRegister),
     RotateLeftA,
     RotateLeft(InstructionOperand, bool),
+    RotateRightA,
     RotateRight(InstructionOperand, bool),
     ShiftRight(InstructionOperand, bool),
     Return,
+    ReturnIf(CpuFlag, bool),
     DisableInterrupts,
     EnableInterrupts,
     Complement,
@@ -198,6 +201,7 @@ impl Instruction {
                     4
                 }
             }
+            Instruction::JumpIf(_, _, _) => 3,
             Instruction::JumpRelative(_) => 3,
             Instruction::JumpRelativeIf(_, _, _) => 2,
             Instruction::Increment(to) => 1 + to.cycles(true),
@@ -205,7 +209,7 @@ impl Instruction {
             Instruction::Call(_) => 6,
             Instruction::CallIf(_, _, _) => 3,
             Instruction::Compare(to) => 1 + to.cycles(false),
-            Instruction::Add(to, from) => {
+            Instruction::Add(to, from, _) => {
                 1 + from.cycles(false) + if to.is_16bit() { 1 } else { 0 }
             }
             Instruction::Subtract(from) => 1 + from.cycles(false),
@@ -213,9 +217,11 @@ impl Instruction {
             Instruction::Pop(_) => 3,
             Instruction::RotateLeftA => 1,
             Instruction::RotateLeft(to, _) => 2 + to.cycles(true),
+            Instruction::RotateRightA => 1,
             Instruction::RotateRight(to, _) => 2 + to.cycles(true),
             Instruction::ShiftRight(to, _) => 2 + to.cycles(true),
             Instruction::Return => 4,
+            Instruction::ReturnIf(_, _) => 2,
             Instruction::DisableInterrupts => 1,
             Instruction::EnableInterrupts => 1,
             Instruction::Complement => 1,
@@ -236,6 +242,9 @@ impl fmt::Display for Instruction {
             Instruction::Xor(from) => write!(f, "xor {}", from),
             Instruction::Bit(bit, from) => write!(f, "bit {}, {}", bit, from),
             Instruction::Jump(to) => write!(f, "jp {}", to),
+            Instruction::JumpIf(flag, expected, to) => {
+                write!(f, "jp {}{}, {}", if *expected { "" } else { "N" }, flag, to)
+            }
             Instruction::JumpRelative(offset) => write!(f, "jr {}", offset),
             Instruction::JumpRelativeIf(flag, expected, offset) => {
                 write!(
@@ -259,7 +268,13 @@ impl fmt::Display for Instruction {
                 )
             }
             Instruction::Compare(from) => write!(f, "cp {}", from),
-            Instruction::Add(to, from) => write!(f, "add {}, {}", to, from),
+            Instruction::Add(to, from, use_carry) => write!(
+                f,
+                "{} {}, {}",
+                if *use_carry { "adc" } else { "add" },
+                to,
+                from
+            ),
             Instruction::Subtract(from) => write!(f, "sub {}", from),
             Instruction::Push(from) => write!(f, "push {}", from),
             Instruction::Pop(from) => write!(f, "pop {}", from),
@@ -267,6 +282,7 @@ impl fmt::Display for Instruction {
             Instruction::RotateLeft(to, use_carry) => {
                 write!(f, "rl{} {}", if *use_carry { "c" } else { "" }, to)
             }
+            Instruction::RotateRightA => write!(f, "rra"),
             Instruction::RotateRight(to, use_carry) => {
                 write!(f, "rr{} {}", if *use_carry { "c" } else { "" }, to)
             }
@@ -274,6 +290,9 @@ impl fmt::Display for Instruction {
                 write!(f, "sr{} {}", if *zero { "l" } else { "a" }, to)
             }
             Instruction::Return => write!(f, "ret"),
+            Instruction::ReturnIf(flag, expected) => {
+                write!(f, "ret {}{}", if *expected { "" } else { "N" }, flag)
+            }
             Instruction::DisableInterrupts => write!(f, "di"),
             Instruction::EnableInterrupts => write!(f, "ei"),
             Instruction::Complement => write!(f, "cpl"),
@@ -339,6 +358,10 @@ mod tests {
         for opcode in 0..=0xff {
             memory.0.store(opcode, Ordering::SeqCst);
             let instruction = cpu.fetch_instruction(&mut memory);
+
+            if opcode == 0xcb {
+                continue;
+            }
 
             if let Ok(instruction) = instruction {
                 assert_eq!(

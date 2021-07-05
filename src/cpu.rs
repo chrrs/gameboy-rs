@@ -422,6 +422,12 @@ impl Cpu {
             Instruction::Jump(to) => {
                 self.pc = self.get_u16(mem, to)?;
             }
+            Instruction::JumpIf(flag, expected, address) => {
+                if self.get_flag(flag) == expected {
+                    cycles += 1;
+                    self.pc = address;
+                }
+            }
             Instruction::JumpRelative(offset) => {
                 self.pc = self.pc.wrapping_add(offset as u16);
             }
@@ -517,6 +523,11 @@ impl Cpu {
                 self.set_flag(CpuFlag::Carry, self.a & 0x80 != 0);
                 self.a = self.a << 1 | carry;
             }
+            Instruction::RotateRightA => {
+                let carry = self.get_flag(CpuFlag::Carry) as u8;
+                self.set_flag(CpuFlag::Carry, self.a & 1 != 0);
+                self.a = self.a >> 1 | (carry << 7);
+            }
             Instruction::ShiftRight(to, zero) => {
                 let value = self.get_u8(mem, to)?;
 
@@ -531,6 +542,12 @@ impl Cpu {
                 self.set_flag(CpuFlag::HalfCarry, false);
             }
             Instruction::Return => self.pc = self.pop_u16(mem)?,
+            Instruction::ReturnIf(flag, expected) => {
+                if self.get_flag(flag) == expected {
+                    cycles += 3;
+                    self.pc = self.pop_u16(mem)?
+                }
+            }
             Instruction::Compare(to) => {
                 let value = self.get_u8(mem, to)?;
                 self.subtract_a(value, false);
@@ -539,8 +556,12 @@ impl Cpu {
                 let value = self.get_u8(mem, from)?;
                 self.a = self.subtract_a(value, false);
             }
-            Instruction::Add(to, from) => {
-                let carry = 0; //self.get_flag(CpuFlag::Carry) as u8;
+            Instruction::Add(to, from, use_carry) => {
+                let carry = if use_carry {
+                    self.get_flag(CpuFlag::Carry) as u8
+                } else {
+                    0
+                };
 
                 if to.is_16bit() {
                     let value = self.get_reg_u16(to)?;
@@ -701,8 +722,8 @@ impl Cpu {
             0x05 => instr!(Decrement (:R B)),
             0x06 => instr!(Load (:R B) IMM8),
             // 0x08 => instr!(Load (@IMM16) (:R SP)),
-            0x09 => instr!(Add (R HL) (:R BC)),
-            0x0a => instr!(Add (R A) (@R BC)),
+            0x09 => instr!(Add (R HL) (:R BC) (= false)),
+            0x0a => instr!(Add (R A) (@R BC) (= false)),
             0x0b => instr!(Decrement (:R BC)),
             0x0c => instr!(Increment (:R C)),
             0x0d => instr!(Decrement (:R C)),
@@ -716,12 +737,13 @@ impl Cpu {
             0x16 => instr!(Load (:R D) IMM8),
             0x17 => instr!(RotateLeftA),
             0x18 => instr!(JumpRelative REL8),
-            0x19 => instr!(Add (R HL) (:R DE)),
+            0x19 => instr!(Add (R HL) (:R DE) (= false)),
             0x1a => instr!(Load (:R A) (@R DE)),
             0x1b => instr!(Decrement (:R DE)),
             0x1c => instr!(Increment (:R E)),
             0x1d => instr!(Decrement (:R E)),
             0x1e => instr!(Load (:R E) IMM8),
+            0x1f => instr!(RotateRightA),
             0x20 => instr!(JumpRelativeIf (F Zero) (= false) REL8),
             0x21 => instr!(Load (:R HL) IMM16),
             0x22 => instr!(Load (@R+ HL) (:R A)),
@@ -730,13 +752,14 @@ impl Cpu {
             0x25 => instr!(Decrement (:R H)),
             0x26 => instr!(Load (:R H) IMM8),
             0x28 => instr!(JumpRelativeIf (F Zero) (= true) REL8),
-            0x29 => instr!(Add (R HL) (:R HL)),
+            0x29 => instr!(Add (R HL) (:R HL) (= false)),
             0x2a => instr!(Load (:R A) (@R+ HL)),
             0x2b => instr!(Decrement (:R HL)),
             0x2c => instr!(Increment (:R L)),
             0x2d => instr!(Decrement (:R L)),
             0x2e => instr!(Load (:R L) IMM8),
             0x2f => instr!(Complement),
+            0x30 => instr!(JumpRelativeIf (F Carry) (= false) REL8),
             0x31 => instr!(Load (:R SP) IMM16),
             0x32 => instr!(Load (@R- HL) (:R A)),
             0x33 => instr!(Increment (:R SP)),
@@ -744,7 +767,7 @@ impl Cpu {
             0x35 => instr!(Decrement (@R HL)),
             0x36 => instr!(Load (@R HL) IMM8),
             0x38 => instr!(JumpRelativeIf (F Carry) (= true) REL8),
-            0x39 => instr!(Add (R HL) (:R SP)),
+            0x39 => instr!(Add (R HL) (:R SP) (= false)),
             0x3a => instr!(Load (:R A) (@R- HL)),
             0x3b => instr!(Decrement (:R SP)),
             0x3c => instr!(Increment (:R A)),
@@ -813,14 +836,22 @@ impl Cpu {
             0x7d => instr!(Load (:R A) (:R L)),
             0x7e => instr!(Load (:R A) (@R HL)),
             0x7f => instr!(Load (:R A) (:R A)),
-            0x80 => instr!(Add (R A) (:R B)),
-            0x81 => instr!(Add (R A) (:R C)),
-            0x82 => instr!(Add (R A) (:R D)),
-            0x83 => instr!(Add (R A) (:R E)),
-            0x84 => instr!(Add (R A) (:R H)),
-            0x85 => instr!(Add (R A) (:R L)),
-            0x86 => instr!(Add (R A) (@R HL)),
-            0x87 => instr!(Add (R A) (:R A)),
+            0x80 => instr!(Add (R A) (:R B) (= false)),
+            0x81 => instr!(Add (R A) (:R C) (= false)),
+            0x82 => instr!(Add (R A) (:R D) (= false)),
+            0x83 => instr!(Add (R A) (:R E) (= false)),
+            0x84 => instr!(Add (R A) (:R H) (= false)),
+            0x85 => instr!(Add (R A) (:R L) (= false)),
+            0x86 => instr!(Add (R A) (@R HL) (= false)),
+            0x87 => instr!(Add (R A) (:R A) (= false)),
+            0x88 => instr!(Add (R A) (:R B) (= true)),
+            0x89 => instr!(Add (R A) (:R C) (= true)),
+            0x8a => instr!(Add (R A) (:R D) (= true)),
+            0x8b => instr!(Add (R A) (:R E) (= true)),
+            0x8c => instr!(Add (R A) (:R H) (= true)),
+            0x8d => instr!(Add (R A) (:R L) (= true)),
+            0x8e => instr!(Add (R A) (@R HL) (= true)),
+            0x8f => instr!(Add (R A) (:R A) (= true)),
             0x90 => instr!(Subtract (:R B)),
             0x91 => instr!(Subtract (:R C)),
             0x92 => instr!(Subtract (:R D)),
@@ -861,57 +892,61 @@ impl Cpu {
             0xbd => instr!(Compare (:R L)),
             0xbe => instr!(Compare (@R HL)),
             0xbf => instr!(Compare (:R A)),
+            0xc0 => instr!(ReturnIf (F Zero) (= false)),
             0xc1 => instr!(Pop (R BC)),
+            0xc2 => instr!(JumpIf (F Zero) (= false) ABS16),
             0xc3 => instr!(Jump IMM16),
             0xc4 => instr!(CallIf (F Zero) (= false) ABS16),
             0xc5 => instr!(Push (R BC)),
-            0xc6 => instr!(Add (R A) IMM8),
+            0xc6 => instr!(Add (R A) IMM8 (= false)),
             0xc7 => instr!(Rst (= 0)),
+            0xc8 => instr!(ReturnIf (F Zero) (= true)),
             0xc9 => instr!(Return),
+            0xca => instr!(JumpIf (F Zero) (= true) ABS16),
             0xcb => {
                 let opcode = self.fetch_u8(mem)?;
 
                 match opcode {
-                    0x00 => instr!(RotateLeft (:R B) (= true)),
-                    0x01 => instr!(RotateLeft (:R C) (= true)),
-                    0x02 => instr!(RotateLeft (:R D) (= true)),
-                    0x03 => instr!(RotateLeft (:R E) (= true)),
-                    0x04 => instr!(RotateLeft (:R H) (= true)),
-                    0x05 => instr!(RotateLeft (:R L) (= true)),
-                    0x06 => instr!(RotateLeft (@R HL) (= true)),
-                    0x07 => instr!(RotateLeft (:R A) (= true)),
-                    0x08 => instr!(RotateRight (:R B) (= true)),
-                    0x09 => instr!(RotateRight (:R C) (= true)),
-                    0x0a => instr!(RotateRight (:R D) (= true)),
-                    0x0b => instr!(RotateRight (:R E) (= true)),
-                    0x0c => instr!(RotateRight (:R H) (= true)),
-                    0x0d => instr!(RotateRight (:R L) (= true)),
-                    0x0e => instr!(RotateRight (@R HL) (= true)),
-                    0x0f => instr!(RotateRight (:R A) (= true)),
-                    0x10 => instr!(RotateLeft (:R B) (= false)),
-                    0x11 => instr!(RotateLeft (:R C) (= false)),
-                    0x12 => instr!(RotateLeft (:R D) (= false)),
-                    0x13 => instr!(RotateLeft (:R E) (= false)),
-                    0x14 => instr!(RotateLeft (:R H) (= false)),
-                    0x15 => instr!(RotateLeft (:R L) (= false)),
-                    0x16 => instr!(RotateLeft (@R HL) (= false)),
-                    0x17 => instr!(RotateLeft (:R A) (= false)),
-                    0x18 => instr!(RotateRight (:R B) (= false)),
-                    0x19 => instr!(RotateRight (:R C) (= false)),
-                    0x1a => instr!(RotateRight (:R D) (= false)),
-                    0x1b => instr!(RotateRight (:R E) (= false)),
-                    0x1c => instr!(RotateRight (:R H) (= false)),
-                    0x1d => instr!(RotateRight (:R L) (= false)),
-                    0x1e => instr!(RotateRight (@R HL) (= false)),
-                    0x1f => instr!(RotateRight (:R A) (= false)),
-                    0x28 => instr!(ShiftRight (:R B) (= false)),
-                    0x29 => instr!(ShiftRight (:R C) (= false)),
-                    0x2a => instr!(ShiftRight (:R D) (= false)),
-                    0x2b => instr!(ShiftRight (:R E) (= false)),
-                    0x2c => instr!(ShiftRight (:R H) (= false)),
-                    0x2d => instr!(ShiftRight (:R L) (= false)),
-                    0x2e => instr!(ShiftRight (@R HL) (= false)),
-                    0x2f => instr!(ShiftRight (:R A) (= false)),
+                    0x00 => instr!(RotateLeft (:R B) (= false)),
+                    0x01 => instr!(RotateLeft (:R C) (= false)),
+                    0x02 => instr!(RotateLeft (:R D) (= false)),
+                    0x03 => instr!(RotateLeft (:R E) (= false)),
+                    0x04 => instr!(RotateLeft (:R H) (= false)),
+                    0x05 => instr!(RotateLeft (:R L) (= false)),
+                    0x06 => instr!(RotateLeft (@R HL) (= false)),
+                    0x07 => instr!(RotateLeft (:R A) (= false)),
+                    0x08 => instr!(RotateRight (:R B) (= false)),
+                    0x09 => instr!(RotateRight (:R C) (= false)),
+                    0x0a => instr!(RotateRight (:R D) (= false)),
+                    0x0b => instr!(RotateRight (:R E) (= false)),
+                    0x0c => instr!(RotateRight (:R H) (= false)),
+                    0x0d => instr!(RotateRight (:R L) (= false)),
+                    0x0e => instr!(RotateRight (@R HL) (= false)),
+                    0x0f => instr!(RotateRight (:R A) (= false)),
+                    0x10 => instr!(RotateLeft (:R B) (= true)),
+                    0x11 => instr!(RotateLeft (:R C) (= true)),
+                    0x12 => instr!(RotateLeft (:R D) (= true)),
+                    0x13 => instr!(RotateLeft (:R E) (= true)),
+                    0x14 => instr!(RotateLeft (:R H) (= true)),
+                    0x15 => instr!(RotateLeft (:R L) (= true)),
+                    0x16 => instr!(RotateLeft (@R HL) (= true)),
+                    0x17 => instr!(RotateLeft (:R A) (= true)),
+                    0x18 => instr!(RotateRight (:R B) (= true)),
+                    0x19 => instr!(RotateRight (:R C) (= true)),
+                    0x1a => instr!(RotateRight (:R D) (= true)),
+                    0x1b => instr!(RotateRight (:R E) (= true)),
+                    0x1c => instr!(RotateRight (:R H) (= true)),
+                    0x1d => instr!(RotateRight (:R L) (= true)),
+                    0x1e => instr!(RotateRight (@R HL) (= true)),
+                    0x1f => instr!(RotateRight (:R A) (= true)),
+                    0x28 => instr!(ShiftRight (:R B) (= true)),
+                    0x29 => instr!(ShiftRight (:R C) (= true)),
+                    0x2a => instr!(ShiftRight (:R D) (= true)),
+                    0x2b => instr!(ShiftRight (:R E) (= true)),
+                    0x2c => instr!(ShiftRight (:R H) (= true)),
+                    0x2d => instr!(ShiftRight (:R L) (= true)),
+                    0x2e => instr!(ShiftRight (@R HL) (= true)),
+                    0x2f => instr!(ShiftRight (:R A) (= true)),
                     0x30 => instr!(Swap (:R B)),
                     0x31 => instr!(Swap (:R C)),
                     0x32 => instr!(Swap (:R D)),
@@ -999,12 +1034,17 @@ impl Cpu {
             }
             0xcc => instr!(CallIf (F Zero) (= true) ABS16),
             0xcd => instr!(Call ABS16),
+            0xce => instr!(Add (R A) IMM8 (= true)),
             0xcf => instr!(Rst (= 1)),
+            0xd0 => instr!(ReturnIf (F Carry) (= false)),
             0xd1 => instr!(Pop (R DE)),
+            0xd2 => instr!(JumpIf (F Carry) (= false) ABS16),
             0xd4 => instr!(CallIf (F Carry) (= false) ABS16),
             0xd5 => instr!(Push (R DE)),
             0xd6 => instr!(Subtract IMM8),
             0xd7 => instr!(Rst (= 2)),
+            0xd8 => instr!(ReturnIf (F Carry) (= true)),
+            0xda => instr!(JumpIf (F Carry) (= true) ABS16),
             0xdc => instr!(CallIf (F Carry) (= false) ABS16),
             0xdf => instr!(Rst (= 3)),
             0xe0 => instr!(Load (@IMM8 0xff00) (:R A)),
