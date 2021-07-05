@@ -50,7 +50,7 @@ impl Device {
         let Device { cpu, mmu, .. } = self;
         let cycles = cpu
             .exec_next_instruction(mmu)
-            .context("failed to fetch next instruction")
+            .context("failed to execute next instruction")
             .unwrap();
 
         if mmu.gpu.cycle(cycles) {

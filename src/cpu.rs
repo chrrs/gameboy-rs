@@ -345,9 +345,7 @@ impl Cpu {
 
 impl Cpu {
     pub fn exec_next_instruction<M: Memory>(&mut self, mem: &mut M) -> Result<usize, CpuError> {
-        let instruction = self
-            .fetch_instruction(mem)
-            .expect("trying to execute an unrecognized instruction");
+        let instruction = self.fetch_instruction(mem)?;
         self.exec_instruction(mem, instruction)
     }
 

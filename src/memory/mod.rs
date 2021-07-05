@@ -21,8 +21,8 @@ impl fmt::Display for MemoryOperation {
 
 #[derive(Error, Debug, Clone, Copy)]
 pub enum MemoryError {
-    #[error("trying to access unmapped memory at {address:#06x}")]
-    Unmapped { address: u16 },
+    #[error("trying to {op} to unmapped memory at {address:#06x}")]
+    Unmapped { address: u16, op: MemoryOperation },
     #[error("illegal {op} to memory at {address:#06x}")]
     Illegal { address: u16, op: MemoryOperation },
     #[error("write to read-only memory at {address:#06x}")]
