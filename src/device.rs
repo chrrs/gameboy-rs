@@ -25,17 +25,8 @@ impl Device {
     }
 
     pub fn reset(&mut self) {
-        self.cpu.a = 0;
-        self.cpu.b = 0;
-        self.cpu.c = 0;
-        self.cpu.d = 0;
-        self.cpu.e = 0;
-        self.cpu.h = 0;
-        self.cpu.l = 0;
-        self.cpu.f = 0;
-        self.cpu.pc = 0;
-        self.mmu.gpu.scroll_x = 0;
-        self.mmu.gpu.scroll_y = 0;
+        self.cpu.reset();
+        self.mmu.gpu.reset();
     }
 
     pub fn step_frame(&mut self) {

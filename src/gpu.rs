@@ -51,6 +51,14 @@ impl Gpu {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.scroll_x = 0;
+        self.scroll_y = 0;
+        self.line = 0;
+        self.mode = GpuMode::HBlank;
+        self.mode_cycles = 0;
+    }
+
     pub fn scanline(&self) -> u8 {
         self.line
     }

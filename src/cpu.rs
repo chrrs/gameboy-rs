@@ -90,6 +90,18 @@ impl Cpu {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.a = 0;
+        self.b = 0;
+        self.c = 0;
+        self.d = 0;
+        self.e = 0;
+        self.h = 0;
+        self.l = 0;
+        self.f = 0;
+        self.pc = 0;
+    }
+
     pub fn af(&self) -> u16 {
         (self.a as u16) << 8 | (self.f as u16)
     }
