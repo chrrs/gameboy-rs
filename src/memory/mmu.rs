@@ -41,7 +41,10 @@ impl Memory for Mmu {
             0xff43 => Ok(self.gpu.scroll_x),
             0xff44 => Ok(self.gpu.scanline()),
             0xff80..=0xfffe => Ok(self.hram[address as usize - 0xff80]),
-            _ => Err(MemoryError::Unmapped { address }),
+            _ => Err(MemoryError::Unmapped {
+                address,
+                op: MemoryOperation::Read,
+            }),
         }
     }
 
@@ -76,6 +79,14 @@ impl Memory for Mmu {
                 self.gpu.oam[address as usize - 0xfe00] = value;
                 Ok(())
             }
+            0xff11 => Ok(()),
+            0xff12 => Ok(()),
+            0xff13 => Ok(()),
+            0xff14 => Ok(()),
+            0xff24 => Ok(()),
+            0xff25 => Ok(()),
+            0xff26 => Ok(()),
+            0xff40 => Ok(()),
             0xff42 => {
                 self.gpu.scroll_y = value;
                 Ok(())
@@ -84,15 +95,17 @@ impl Memory for Mmu {
                 self.gpu.scroll_x = value;
                 Ok(())
             }
-            0xff44 => Err(MemoryError::Illegal {
-                address,
-                op: MemoryOperation::Write,
-            }),
+            0xff44 => Err(MemoryError::ReadOnly { address }),
+            0xff47 => Ok(()),
+            0xff50 => Ok(()),
             0xff80..=0xfffe => {
                 self.hram[address as usize - 0xff80] = value;
                 Ok(())
             }
-            _ => Err(MemoryError::Unmapped { address }),
+            _ => Err(MemoryError::Unmapped {
+                address,
+                op: MemoryOperation::Write,
+            }),
         }
     }
 }
