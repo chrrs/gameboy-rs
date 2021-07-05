@@ -43,6 +43,7 @@ impl Memory for Mmu {
             0xff43 => Ok(self.gpu.scroll_x),
             0xff44 => Ok(self.gpu.scanline()),
             0xff80..=0xfffe => Ok(self.hram[address as usize - 0xff80]),
+            0xffff => Ok(0), // Enable interrupts
             _ => Err(MemoryError::Unmapped {
                 address,
                 op: MemoryOperation::Read,
@@ -86,6 +87,7 @@ impl Memory for Mmu {
             0xff01 => Ok(()),          // Serial transfer data
             0xff02 => Ok(()),          // Serial transfer control
             0xff06 => Ok(()),          // Timer Modulo
+            0xff07 => Ok(()),          // Timer Control
             0xff0f => Ok(()),          // Interrupt flag
             0xff10..=0xff26 => Ok(()), // Sound
             0xff40 => Ok(()),          // LCD Control

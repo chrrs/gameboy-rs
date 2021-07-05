@@ -157,24 +157,28 @@ pub enum Instruction {
     Or(InstructionOperand),
     Xor(InstructionOperand),
     Bit(u8, InstructionOperand),
-    Jump(u16),
+    Jump(InstructionOperand),
     JumpRelative(i8),
     JumpRelativeIf(CpuFlag, bool, i8),
     Increment(InstructionOperand),
     Decrement(InstructionOperand),
     Call(u16),
+    CallIf(CpuFlag, bool, u16),
     Compare(InstructionOperand),
     Add(CpuRegister, InstructionOperand),
     Subtract(InstructionOperand),
     Push(CpuRegister),
     Pop(CpuRegister),
     RotateLeftA,
-    ExtendedRotateLeft(InstructionOperand),
+    RotateLeft(InstructionOperand, bool),
+    RotateRight(InstructionOperand, bool),
+    ShiftRight(InstructionOperand, bool),
     Return,
     DisableInterrupts,
     EnableInterrupts,
     Complement,
     Swap(InstructionOperand),
+    Rst(u8),
 }
 
 impl Instruction {
@@ -187,12 +191,19 @@ impl Instruction {
             Instruction::Or(from) => 1 + from.cycles(false),
             Instruction::Xor(from) => 1 + from.cycles(false),
             Instruction::Bit(_, from) => 2 + from.cycles(false),
-            Instruction::Jump(_) => 4,
+            Instruction::Jump(to) => {
+                if let InstructionOperand::Register(_) = to {
+                    1
+                } else {
+                    4
+                }
+            }
             Instruction::JumpRelative(_) => 3,
             Instruction::JumpRelativeIf(_, _, _) => 2,
             Instruction::Increment(to) => 1 + to.cycles(true),
             Instruction::Decrement(to) => 1 + to.cycles(true),
             Instruction::Call(_) => 6,
+            Instruction::CallIf(_, _, _) => 3,
             Instruction::Compare(to) => 1 + to.cycles(false),
             Instruction::Add(to, from) => {
                 1 + from.cycles(false) + if to.is_16bit() { 1 } else { 0 }
@@ -201,12 +212,15 @@ impl Instruction {
             Instruction::Push(_) => 4,
             Instruction::Pop(_) => 3,
             Instruction::RotateLeftA => 1,
-            Instruction::ExtendedRotateLeft(to) => 2 + to.cycles(true),
+            Instruction::RotateLeft(to, _) => 2 + to.cycles(true),
+            Instruction::RotateRight(to, _) => 2 + to.cycles(true),
+            Instruction::ShiftRight(to, _) => 2 + to.cycles(true),
             Instruction::Return => 4,
             Instruction::DisableInterrupts => 1,
             Instruction::EnableInterrupts => 1,
             Instruction::Complement => 1,
             Instruction::Swap(to) => 2 + to.cycles(true),
+            Instruction::Rst(_) => 4,
         }
     }
 }
@@ -221,7 +235,7 @@ impl fmt::Display for Instruction {
             Instruction::Or(from) => write!(f, "or {}", from),
             Instruction::Xor(from) => write!(f, "xor {}", from),
             Instruction::Bit(bit, from) => write!(f, "bit {}, {}", bit, from),
-            Instruction::Jump(address) => write!(f, "jp {:#06x}", address),
+            Instruction::Jump(to) => write!(f, "jp {}", to),
             Instruction::JumpRelative(offset) => write!(f, "jr {}", offset),
             Instruction::JumpRelativeIf(flag, expected, offset) => {
                 write!(
@@ -235,18 +249,36 @@ impl fmt::Display for Instruction {
             Instruction::Increment(to) => write!(f, "inc {}", to),
             Instruction::Decrement(to) => write!(f, "dec {}", to),
             Instruction::Call(address) => write!(f, "call {:#06x}", address),
+            Instruction::CallIf(flag, expected, address) => {
+                write!(
+                    f,
+                    "call {}{}, {}",
+                    if *expected { "" } else { "N" },
+                    flag,
+                    address
+                )
+            }
             Instruction::Compare(from) => write!(f, "cp {}", from),
             Instruction::Add(to, from) => write!(f, "add {}, {}", to, from),
             Instruction::Subtract(from) => write!(f, "sub {}", from),
             Instruction::Push(from) => write!(f, "push {}", from),
             Instruction::Pop(from) => write!(f, "pop {}", from),
             Instruction::RotateLeftA => write!(f, "rla"),
-            Instruction::ExtendedRotateLeft(to) => write!(f, "rl {}", to),
+            Instruction::RotateLeft(to, use_carry) => {
+                write!(f, "rl{} {}", if *use_carry { "c" } else { "" }, to)
+            }
+            Instruction::RotateRight(to, use_carry) => {
+                write!(f, "rr{} {}", if *use_carry { "c" } else { "" }, to)
+            }
+            Instruction::ShiftRight(to, zero) => {
+                write!(f, "sr{} {}", if *zero { "l" } else { "a" }, to)
+            }
             Instruction::Return => write!(f, "ret"),
             Instruction::DisableInterrupts => write!(f, "di"),
             Instruction::EnableInterrupts => write!(f, "ei"),
             Instruction::Complement => write!(f, "cpl"),
             Instruction::Swap(to) => write!(f, "swap {}", to),
+            Instruction::Rst(address) => write!(f, "rst {}", address),
         }
     }
 }

@@ -419,8 +419,8 @@ impl Cpu {
                 self.set_flag(CpuFlag::Subtraction, false);
                 self.set_flag(CpuFlag::HalfCarry, true);
             }
-            Instruction::Jump(address) => {
-                self.pc = address;
+            Instruction::Jump(to) => {
+                self.pc = self.get_u16(mem, to)?;
             }
             Instruction::JumpRelative(offset) => {
                 self.pc = self.pc.wrapping_add(offset as u16);
@@ -463,6 +463,13 @@ impl Cpu {
                 self.push_u16(mem, self.pc)?;
                 self.pc = address;
             }
+            Instruction::CallIf(flag, expected, address) => {
+                if self.get_flag(flag) == expected {
+                    cycles += 3;
+                    self.push_u16(mem, self.pc)?;
+                    self.pc = address;
+                }
+            }
             Instruction::Push(reg) => {
                 let value = self.get_reg_u16(reg)?;
                 self.push_u16(mem, value)?
@@ -471,13 +478,34 @@ impl Cpu {
                 let value = self.pop_u16(mem)?;
                 self.set_reg_u16(reg, value)?;
             }
-            Instruction::ExtendedRotateLeft(to) => {
-                let carry = self.get_flag(CpuFlag::Carry) as u8;
+            Instruction::RotateLeft(to, use_carry) => {
                 let previous = self.get_u8(mem, to)?;
+                let bit = if use_carry {
+                    self.get_flag(CpuFlag::Carry) as u8
+                } else {
+                    previous & 0x80 >> 7
+                };
 
                 self.set_flag(CpuFlag::Carry, previous & 0x80 != 0);
 
-                let value = previous << 1 | carry;
+                let value = previous << 1 | bit;
+                self.set_u8(mem, to, value)?;
+
+                self.set_flag(CpuFlag::Zero, value == 0);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, false);
+            }
+            Instruction::RotateRight(to, use_carry) => {
+                let previous = self.get_u8(mem, to)?;
+                let bit = if use_carry {
+                    (self.get_flag(CpuFlag::Carry) as u8) << 7
+                } else {
+                    (previous & 1) << 7
+                };
+
+                self.set_flag(CpuFlag::Carry, previous & 1 != 0);
+
+                let value = previous >> 1 | bit;
                 self.set_u8(mem, to, value)?;
 
                 self.set_flag(CpuFlag::Zero, value == 0);
@@ -488,6 +516,19 @@ impl Cpu {
                 let carry = self.get_flag(CpuFlag::Carry) as u8;
                 self.set_flag(CpuFlag::Carry, self.a & 0x80 != 0);
                 self.a = self.a << 1 | carry;
+            }
+            Instruction::ShiftRight(to, zero) => {
+                let value = self.get_u8(mem, to)?;
+
+                self.set_flag(CpuFlag::Carry, value & 1 != 0);
+                let last_bit = if zero { 0 } else { value & (1 << 7) };
+                let result = value >> 1 | last_bit;
+
+                self.set_u8(mem, to, result)?;
+
+                self.set_flag(CpuFlag::Zero, result == 0);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, false);
             }
             Instruction::Return => self.pc = self.pop_u16(mem)?,
             Instruction::Compare(to) => {
@@ -558,6 +599,10 @@ impl Cpu {
                 self.set_flag(CpuFlag::Subtraction, false);
                 self.set_flag(CpuFlag::HalfCarry, false);
                 self.set_flag(CpuFlag::Carry, false);
+            }
+            Instruction::Rst(address) => {
+                self.push_u16(mem, self.pc)?;
+                self.pc = address as u16 * 8;
             }
             _ => panic!("unimplemented instruction {:x?}", instruction),
         }
@@ -817,45 +862,175 @@ impl Cpu {
             0xbe => instr!(Compare (@R HL)),
             0xbf => instr!(Compare (:R A)),
             0xc1 => instr!(Pop (R BC)),
-            0xc3 => instr!(Jump ABS16),
+            0xc3 => instr!(Jump IMM16),
+            0xc4 => instr!(CallIf (F Zero) (= false) ABS16),
             0xc5 => instr!(Push (R BC)),
             0xc6 => instr!(Add (R A) IMM8),
+            0xc7 => instr!(Rst (= 0)),
             0xc9 => instr!(Return),
             0xcb => {
                 let opcode = self.fetch_u8(mem)?;
 
                 match opcode {
-                    0x11 => instr!(ExtendedRotateLeft (:R C)),
+                    0x00 => instr!(RotateLeft (:R B) (= true)),
+                    0x01 => instr!(RotateLeft (:R C) (= true)),
+                    0x02 => instr!(RotateLeft (:R D) (= true)),
+                    0x03 => instr!(RotateLeft (:R E) (= true)),
+                    0x04 => instr!(RotateLeft (:R H) (= true)),
+                    0x05 => instr!(RotateLeft (:R L) (= true)),
+                    0x06 => instr!(RotateLeft (@R HL) (= true)),
+                    0x07 => instr!(RotateLeft (:R A) (= true)),
+                    0x08 => instr!(RotateRight (:R B) (= true)),
+                    0x09 => instr!(RotateRight (:R C) (= true)),
+                    0x0a => instr!(RotateRight (:R D) (= true)),
+                    0x0b => instr!(RotateRight (:R E) (= true)),
+                    0x0c => instr!(RotateRight (:R H) (= true)),
+                    0x0d => instr!(RotateRight (:R L) (= true)),
+                    0x0e => instr!(RotateRight (@R HL) (= true)),
+                    0x0f => instr!(RotateRight (:R A) (= true)),
+                    0x10 => instr!(RotateLeft (:R B) (= false)),
+                    0x11 => instr!(RotateLeft (:R C) (= false)),
+                    0x12 => instr!(RotateLeft (:R D) (= false)),
+                    0x13 => instr!(RotateLeft (:R E) (= false)),
+                    0x14 => instr!(RotateLeft (:R H) (= false)),
+                    0x15 => instr!(RotateLeft (:R L) (= false)),
+                    0x16 => instr!(RotateLeft (@R HL) (= false)),
+                    0x17 => instr!(RotateLeft (:R A) (= false)),
+                    0x18 => instr!(RotateRight (:R B) (= false)),
+                    0x19 => instr!(RotateRight (:R C) (= false)),
+                    0x1a => instr!(RotateRight (:R D) (= false)),
+                    0x1b => instr!(RotateRight (:R E) (= false)),
+                    0x1c => instr!(RotateRight (:R H) (= false)),
+                    0x1d => instr!(RotateRight (:R L) (= false)),
+                    0x1e => instr!(RotateRight (@R HL) (= false)),
+                    0x1f => instr!(RotateRight (:R A) (= false)),
+                    0x28 => instr!(ShiftRight (:R B) (= false)),
+                    0x29 => instr!(ShiftRight (:R C) (= false)),
+                    0x2a => instr!(ShiftRight (:R D) (= false)),
+                    0x2b => instr!(ShiftRight (:R E) (= false)),
+                    0x2c => instr!(ShiftRight (:R H) (= false)),
+                    0x2d => instr!(ShiftRight (:R L) (= false)),
+                    0x2e => instr!(ShiftRight (@R HL) (= false)),
+                    0x2f => instr!(ShiftRight (:R A) (= false)),
+                    0x30 => instr!(Swap (:R B)),
+                    0x31 => instr!(Swap (:R C)),
+                    0x32 => instr!(Swap (:R D)),
+                    0x33 => instr!(Swap (:R E)),
+                    0x34 => instr!(Swap (:R H)),
+                    0x35 => instr!(Swap (:R L)),
+                    0x36 => instr!(Swap (@R HL)),
                     0x37 => instr!(Swap (:R A)),
+                    0x38 => instr!(ShiftRight (:R B) (= true)),
+                    0x39 => instr!(ShiftRight (:R C) (= true)),
+                    0x3a => instr!(ShiftRight (:R D) (= true)),
+                    0x3b => instr!(ShiftRight (:R E) (= true)),
+                    0x3c => instr!(ShiftRight (:R H) (= true)),
+                    0x3d => instr!(ShiftRight (:R L) (= true)),
+                    0x3e => instr!(ShiftRight (@R HL) (= true)),
+                    0x3f => instr!(ShiftRight (:R A) (= true)),
+                    0x40 => instr!(Bit (= 0) (:R B)),
+                    0x41 => instr!(Bit (= 0) (:R C)),
+                    0x42 => instr!(Bit (= 0) (:R D)),
+                    0x43 => instr!(Bit (= 0) (:R E)),
+                    0x44 => instr!(Bit (= 0) (:R H)),
+                    0x45 => instr!(Bit (= 0) (:R L)),
+                    0x46 => instr!(Bit (= 0) (@R HL)),
+                    0x47 => instr!(Bit (= 0) (:R A)),
+                    0x48 => instr!(Bit (= 1) (:R B)),
+                    0x49 => instr!(Bit (= 1) (:R C)),
+                    0x4a => instr!(Bit (= 1) (:R D)),
+                    0x4b => instr!(Bit (= 1) (:R E)),
+                    0x4c => instr!(Bit (= 1) (:R H)),
+                    0x4d => instr!(Bit (= 1) (:R L)),
+                    0x4e => instr!(Bit (= 1) (@R HL)),
+                    0x4f => instr!(Bit (= 1) (:R A)),
+                    0x50 => instr!(Bit (= 2) (:R B)),
+                    0x51 => instr!(Bit (= 2) (:R C)),
+                    0x52 => instr!(Bit (= 2) (:R D)),
+                    0x53 => instr!(Bit (= 2) (:R E)),
+                    0x54 => instr!(Bit (= 2) (:R H)),
+                    0x55 => instr!(Bit (= 2) (:R L)),
+                    0x56 => instr!(Bit (= 2) (@R HL)),
+                    0x57 => instr!(Bit (= 2) (:R A)),
+                    0x58 => instr!(Bit (= 3) (:R B)),
+                    0x59 => instr!(Bit (= 3) (:R C)),
+                    0x5a => instr!(Bit (= 3) (:R D)),
+                    0x5b => instr!(Bit (= 3) (:R E)),
+                    0x5c => instr!(Bit (= 3) (:R H)),
+                    0x5d => instr!(Bit (= 3) (:R L)),
+                    0x5e => instr!(Bit (= 3) (@R HL)),
+                    0x5f => instr!(Bit (= 3) (:R A)),
+                    0x60 => instr!(Bit (= 4) (:R B)),
+                    0x61 => instr!(Bit (= 4) (:R C)),
+                    0x62 => instr!(Bit (= 4) (:R D)),
+                    0x63 => instr!(Bit (= 4) (:R E)),
+                    0x64 => instr!(Bit (= 4) (:R H)),
+                    0x65 => instr!(Bit (= 4) (:R L)),
+                    0x66 => instr!(Bit (= 4) (@R HL)),
+                    0x67 => instr!(Bit (= 4) (:R A)),
+                    0x68 => instr!(Bit (= 5) (:R B)),
+                    0x69 => instr!(Bit (= 5) (:R C)),
+                    0x6a => instr!(Bit (= 5) (:R D)),
+                    0x6b => instr!(Bit (= 5) (:R E)),
+                    0x6c => instr!(Bit (= 5) (:R H)),
+                    0x6d => instr!(Bit (= 5) (:R L)),
+                    0x6e => instr!(Bit (= 5) (@R HL)),
+                    0x6f => instr!(Bit (= 5) (:R A)),
+                    0x70 => instr!(Bit (= 6) (:R B)),
+                    0x71 => instr!(Bit (= 6) (:R C)),
+                    0x72 => instr!(Bit (= 6) (:R D)),
+                    0x73 => instr!(Bit (= 6) (:R E)),
+                    0x74 => instr!(Bit (= 6) (:R H)),
+                    0x75 => instr!(Bit (= 6) (:R L)),
+                    0x76 => instr!(Bit (= 6) (@R HL)),
+                    0x77 => instr!(Bit (= 6) (:R A)),
+                    0x78 => instr!(Bit (= 7) (:R B)),
+                    0x79 => instr!(Bit (= 7) (:R C)),
+                    0x7a => instr!(Bit (= 7) (:R D)),
+                    0x7b => instr!(Bit (= 7) (:R E)),
                     0x7c => instr!(Bit (= 7) (:R H)),
+                    0x7d => instr!(Bit (= 7) (:R L)),
+                    0x7e => instr!(Bit (= 7) (@R HL)),
+                    0x7f => instr!(Bit (= 7) (:R A)),
                     _ => Err(InstructionError::InvalidOpcode {
                         opcode: opcode as u16 + 0xcb00,
                     }),
                 }
             }
+            0xcc => instr!(CallIf (F Zero) (= true) ABS16),
             0xcd => instr!(Call ABS16),
+            0xcf => instr!(Rst (= 1)),
             0xd1 => instr!(Pop (R DE)),
+            0xd4 => instr!(CallIf (F Carry) (= false) ABS16),
             0xd5 => instr!(Push (R DE)),
             0xd6 => instr!(Subtract IMM8),
+            0xd7 => instr!(Rst (= 2)),
+            0xdc => instr!(CallIf (F Carry) (= false) ABS16),
+            0xdf => instr!(Rst (= 3)),
             0xe0 => instr!(Load (@IMM8 0xff00) (:R A)),
             0xe1 => instr!(Pop (R HL)),
             0xe2 => instr!(Load (@R C 0xff00) (:R A)),
             0xe5 => instr!(Push (R HL)),
             0xe6 => instr!(And IMM8),
+            0xe7 => instr!(Rst (= 4)),
             // 0xe8 => instr!(Add (R SP) IMM8),
+            0xe9 => instr!(Jump (:R HL)),
             0xea => instr!(Load (@IMM16) (:R A)),
             0xee => instr!(Xor IMM8),
+            0xef => instr!(Rst (= 5)),
             0xf0 => instr!(Load (:R A) (@IMM8 0xff00)),
             0xf1 => instr!(Pop (R AF)),
             0xf2 => instr!(Load (:R A) (@R C 0xff00)),
             0xf3 => instr!(DisableInterrupts),
             0xf5 => instr!(Push (R AF)),
             0xf6 => instr!(Or IMM8),
+            0xf7 => instr!(Rst (= 6)),
             // 0xf8 => instr!(Load (:R HL) (:R SP IMM8))
             // 0xf9 => instr!(Load (:R SP) (:R HL)),
             0xfa => instr!(Load (:R A) (@IMM16)),
             0xfb => instr!(EnableInterrupts),
             0xfe => instr!(Compare IMM8),
+            0xff => instr!(Rst (= 7)),
             _ => Err(InstructionError::InvalidOpcode {
                 opcode: opcode as u16,
             }),
