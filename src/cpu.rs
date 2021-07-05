@@ -273,6 +273,9 @@ impl Cpu {
                 self.set_reg_u16(reg, reg_value)?;
                 Ok(value)
             }
+            InstructionOperand::OffsetMemoryLocationImmediate8(offset, address) => {
+                Ok(mem.read(offset + address as u16)?)
+            }
             InstructionOperand::MemoryLocationImmediate16(address) => Ok(mem.read(address)?),
         }
     }
@@ -302,6 +305,9 @@ impl Cpu {
                 let reg_value = self.get_reg_u16(reg)?.wrapping_add(1);
                 self.set_reg_u16(reg, reg_value)?;
                 Ok(())
+            }
+            InstructionOperand::OffsetMemoryLocationImmediate8(offset, address) => {
+                Ok(mem.write(offset + address as u16, value)?)
             }
             InstructionOperand::MemoryLocationImmediate16(address) => {
                 Ok(mem.write(address, value)?)
@@ -337,6 +343,9 @@ impl Cpu {
                 let reg_value = self.get_reg_u16(reg)?.wrapping_add(1);
                 self.set_reg_u16(reg, reg_value)?;
                 Ok(value)
+            }
+            InstructionOperand::OffsetMemoryLocationImmediate8(offset, address) => {
+                Ok(mem.read(offset + address as u16)? as u16)
             }
             InstructionOperand::MemoryLocationImmediate16(address) => Ok(mem.read(address)? as u16),
         }
@@ -689,7 +698,7 @@ impl Cpu {
             0xcb => self.fetch_extended_instruction(mem),
             0xcd => Ok(Instruction::Call(self.fetch_u16(mem)?)),
             0xe0 => Ok(Instruction::Load(
-                InstructionOperand::MemoryLocationImmediate16(0xff00 + self.fetch_u8(mem)? as u16),
+                InstructionOperand::OffsetMemoryLocationImmediate8(0xff00, self.fetch_u8(mem)?),
                 InstructionOperand::Register(CpuRegister::A),
             )),
             0xe2 => Ok(Instruction::Load(
@@ -702,7 +711,7 @@ impl Cpu {
             )),
             0xf0 => Ok(Instruction::Load(
                 InstructionOperand::Register(CpuRegister::A),
-                InstructionOperand::MemoryLocationImmediate16(0xff00 + self.fetch_u8(mem)? as u16),
+                InstructionOperand::OffsetMemoryLocationImmediate8(0xff00, self.fetch_u8(mem)?),
             )),
             0xfe => Ok(Instruction::Compare(InstructionOperand::Immediate8(
                 self.fetch_u8(mem)?,

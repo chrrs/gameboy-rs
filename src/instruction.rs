@@ -68,6 +68,7 @@ pub enum InstructionOperand {
     MemoryLocationRegister(CpuRegister),
     MemoryLocationRegisterDecrement(CpuRegister),
     MemoryLocationRegisterIncrement(CpuRegister),
+    OffsetMemoryLocationImmediate8(u16, u8),
     MemoryLocationImmediate16(u16),
 }
 
@@ -81,6 +82,7 @@ impl InstructionOperand {
             InstructionOperand::MemoryLocationRegister(_) => false,
             InstructionOperand::MemoryLocationRegisterDecrement(_) => false,
             InstructionOperand::MemoryLocationRegisterIncrement(_) => false,
+            InstructionOperand::OffsetMemoryLocationImmediate8(_, _) => false,
             InstructionOperand::MemoryLocationImmediate16(_) => false,
         }
     }
@@ -96,7 +98,7 @@ impl InstructionOperand {
             }
             InstructionOperand::Immediate8(_) => 1,
             InstructionOperand::Immediate16(_) => 2,
-            InstructionOperand::OffsetMemoryLocationRegister(_, _) => 2,
+            InstructionOperand::OffsetMemoryLocationRegister(_, _) => 1,
             InstructionOperand::MemoryLocationRegister(reg) => {
                 if affect_16bit_reg && reg.is_16bit() {
                     2
@@ -118,6 +120,7 @@ impl InstructionOperand {
                     1
                 }
             }
+            InstructionOperand::OffsetMemoryLocationImmediate8(_, _) => 2,
             InstructionOperand::MemoryLocationImmediate16(_) => 3,
         }
     }
@@ -135,6 +138,9 @@ impl fmt::Display for InstructionOperand {
             InstructionOperand::MemoryLocationRegister(reg) => write!(f, "({})", reg),
             InstructionOperand::MemoryLocationRegisterDecrement(reg) => write!(f, "({}-)", reg),
             InstructionOperand::MemoryLocationRegisterIncrement(reg) => write!(f, "({}+)", reg),
+            InstructionOperand::OffsetMemoryLocationImmediate8(offset, address) => {
+                write!(f, "({:#06x}+{:#04x})", offset, address)
+            }
             InstructionOperand::MemoryLocationImmediate16(address) => {
                 write!(f, "({:#06x})", address)
             }
@@ -169,9 +175,7 @@ impl Instruction {
         match self {
             Instruction::Noop => 1,
             Instruction::Stop => 1,
-            Instruction::Load(to, from) => {
-                1 + to.cycles(false) + from.cycles(false) + if to.is_16bit() { 1 } else { 0 }
-            }
+            Instruction::Load(to, from) => 1 + to.cycles(false) + from.cycles(false),
             Instruction::Xor(from) => 1 + from.cycles(false),
             Instruction::Bit(_, from) => 2 + from.cycles(false),
             Instruction::JumpRelative(_) => 3,
