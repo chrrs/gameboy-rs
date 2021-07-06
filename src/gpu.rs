@@ -1,3 +1,18 @@
+use bitflags::bitflags;
+
+bitflags! {
+    pub struct LcdControl: u8 {
+        const LCD_ENABLE = 1 << 7;
+        const WINDOW_TILEMAP_AREA = 1 << 6; // TODO
+        const WINDOW_ENABLE = 1 << 5; // TODO
+        const BG_WINDOW_TILEDATA_AREA = 1 << 4; // TODO: Partially
+        const BG_TILEMAP_AREA = 1 << 3;
+        const OBJ_SIZE = 1 << 2; // TODO
+        const OBJ_ENABLE = 1 << 1; // TODO
+        const BG_WINDOW_ENABLE = 1 << 0; // TODO: Partially
+    }
+}
+
 pub enum GpuMode {
     HBlank,
     VBlank,
@@ -34,6 +49,7 @@ pub struct Gpu {
     pub scroll_y: u8,
     pub tiles: Box<[Tile; 384]>,
     pub framebuffer: Box<[u8; 160 * 144]>,
+    pub lcd_control: LcdControl,
 }
 
 impl Gpu {
@@ -48,6 +64,7 @@ impl Gpu {
             scroll_y: 0,
             tiles: Box::new([Tile::new(); 384]),
             framebuffer: Box::new([0; 160 * 144]),
+            lcd_control: LcdControl::empty(),
         }
     }
 
@@ -139,25 +156,59 @@ impl Gpu {
     }
 
     fn render_scanline(&mut self) {
-        // TODO: Allow for switching maps
-        let mut address = 0x1800;
+        if !self.lcd_control.contains(LcdControl::LCD_ENABLE) {
+            self.framebuffer.fill(0);
+            return;
+        }
+
+        if !self.lcd_control.contains(LcdControl::BG_WINDOW_ENABLE) {
+            self.framebuffer.fill(0);
+        } else {
+            self.render_background();
+        }
+    }
+
+    fn render_background(&mut self) {
+        let mut address = if self.lcd_control.contains(LcdControl::BG_TILEMAP_AREA) {
+            0x1c00
+        } else {
+            0x1800
+        };
+
         address += (self.line.wrapping_add(self.scroll_y) as usize) / 8 * 32;
         address += (self.scroll_x / 8) as usize;
 
         let tile_y = self.line.wrapping_add(self.scroll_y) % 8;
 
-        let mut tile = self.tiles[self.vram[address] as usize];
+        let mut tile = self.vram[address] as usize;
         address += 1;
+
+        if !self
+            .lcd_control
+            .contains(LcdControl::BG_WINDOW_TILEDATA_AREA)
+            && tile < 128
+        {
+            tile += 256;
+        }
+
         let mut tile_x = self.scroll_x % 8;
         for x in 0..160 {
             let index = x + 160 * self.line as usize;
-            self.framebuffer[index] = tile.get(tile_x as usize, tile_y as usize);
+            self.framebuffer[index] = self.tiles[tile].get(tile_x as usize, tile_y as usize);
 
             tile_x += 1;
             if tile_x == 8 {
                 tile_x = 0;
-                tile = self.tiles[self.vram[address] as usize];
+                tile = self.vram[address] as usize;
                 address += 1;
+
+                if !self
+                    .lcd_control
+                    .contains(LcdControl::BG_WINDOW_TILEDATA_AREA)
+                    && tile < 128
+                {
+                    tile += 256;
+                }
             }
         }
     }

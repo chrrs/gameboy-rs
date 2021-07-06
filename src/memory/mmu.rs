@@ -1,4 +1,7 @@
-use crate::{cartridge::Cartridge, gpu::Gpu};
+use crate::{
+    cartridge::Cartridge,
+    gpu::{Gpu, LcdControl},
+};
 
 use super::{Memory, MemoryError, MemoryOperation};
 
@@ -41,6 +44,7 @@ impl Memory for Mmu {
             0xfe00..=0xfe9f => Ok(self.gpu.oam[address as usize - 0xfe00]),
             0xfea0..=0xfeff => Ok(0xff),
             0xff00 => Ok(0xff), // Joypad P1
+            0xff40 => Ok(self.gpu.lcd_control.bits()),
             0xff42 => Ok(self.gpu.scroll_y),
             0xff43 => Ok(self.gpu.scroll_x),
             0xff44 => Ok(self.gpu.scanline()),
@@ -92,8 +96,11 @@ impl Memory for Mmu {
             0xff07 => Ok(()),          // Timer Control
             0xff0f => Ok(()),          // Interrupt flag
             0xff10..=0xff26 => Ok(()), // Sound
-            0xff40 => Ok(()),          // LCD Control
-            0xff41 => Ok(()),          // LCD Stat
+            0xff40 => {
+                self.gpu.lcd_control = LcdControl::from_bits_truncate(value);
+                Ok(())
+            }
+            0xff41 => Ok(()), // LCD Stat
             0xff42 => {
                 self.gpu.scroll_y = value;
                 Ok(())
