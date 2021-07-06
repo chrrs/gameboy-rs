@@ -108,7 +108,7 @@ impl Cpu {
 
     pub fn set_af(&mut self, value: u16) {
         self.a = (value >> 8) as u8;
-        self.f = value as u8;
+        self.f = value as u8 & 0xf0;
     }
 
     pub fn bc(&self) -> u16 {
@@ -199,7 +199,7 @@ impl Cpu {
             CpuRegister::E => self.e = value,
             CpuRegister::H => self.h = value,
             CpuRegister::L => self.l = value,
-            CpuRegister::F => self.f = value,
+            CpuRegister::F => self.f = value & 0xf0,
             CpuRegister::AF => self.set_af(value as u16),
             CpuRegister::BC => self.set_bc(value as u16),
             CpuRegister::DE => self.set_de(value as u16),

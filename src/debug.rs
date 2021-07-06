@@ -312,6 +312,8 @@ pub fn start_debug_view(mut device: Device) {
                 .always_auto_resize(true)
                 .scroll_bar(false)
                 .resizable(false)
+                .collapsed(true, Condition::FirstUseEver)
+                .position([716.0, 33.0], Condition::FirstUseEver)
                 .build(&ui, || {
                     let tile_framebuffer = device.tile_framebuffer().to_vec();
                     let raw_image = RawImage2d {
