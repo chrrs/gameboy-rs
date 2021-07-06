@@ -625,6 +625,31 @@ impl Cpu {
                 self.push_u16(mem, self.pc)?;
                 self.pc = address as u16 * 8;
             }
+            Instruction::DAA => {
+                let mut correction = 0i8;
+
+                if self.get_flag(CpuFlag::HalfCarry)
+                    || (!self.get_flag(CpuFlag::Subtraction) && (self.a & 0xf > 9))
+                {
+                    correction += 6;
+                }
+
+                if self.get_flag(CpuFlag::Carry)
+                    || (!self.get_flag(CpuFlag::Subtraction) && (self.a > 0x99))
+                {
+                    correction += 0x60;
+                    self.set_flag(CpuFlag::Carry, true);
+                }
+
+                self.a = self.a.wrapping_add(if self.get_flag(CpuFlag::Subtraction) {
+                    -correction as u8
+                } else {
+                    correction as u8
+                });
+
+                self.set_flag(CpuFlag::Zero, self.a == 0);
+                self.set_flag(CpuFlag::HalfCarry, false);
+            }
             _ => panic!("unimplemented instruction {:x?}", instruction),
         }
 
@@ -751,6 +776,7 @@ impl Cpu {
             0x24 => instr!(Increment (:R H)),
             0x25 => instr!(Decrement (:R H)),
             0x26 => instr!(Load (:R H) IMM8),
+            0x27 => instr!(DAA),
             0x28 => instr!(JumpRelativeIf (F Zero) (= true) REL8),
             0x29 => instr!(Add (R HL) (:R HL) (= false)),
             0x2a => instr!(Load (:R A) (@R+ HL)),

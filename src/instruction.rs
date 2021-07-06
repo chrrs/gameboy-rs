@@ -182,6 +182,7 @@ pub enum Instruction {
     Complement,
     Swap(InstructionOperand),
     Rst(u8),
+    DAA,
 }
 
 impl Instruction {
@@ -227,6 +228,7 @@ impl Instruction {
             Instruction::Complement => 1,
             Instruction::Swap(to) => 2 + to.cycles(true),
             Instruction::Rst(_) => 4,
+            Instruction::DAA => 1,
         }
     }
 }
@@ -298,6 +300,7 @@ impl fmt::Display for Instruction {
             Instruction::Complement => write!(f, "cpl"),
             Instruction::Swap(to) => write!(f, "swap {}", to),
             Instruction::Rst(address) => write!(f, "rst {}", address),
+            Instruction::DAA => write!(f, "daa"),
         }
     }
 }
