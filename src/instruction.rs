@@ -183,6 +183,7 @@ pub enum Instruction {
     Swap(InstructionOperand),
     Rst(u8),
     DAA,
+    SetBit(u8, InstructionOperand, bool),
 }
 
 impl Instruction {
@@ -229,6 +230,7 @@ impl Instruction {
             Instruction::Swap(to) => 2 + to.cycles(true),
             Instruction::Rst(_) => 4,
             Instruction::DAA => 1,
+            Instruction::SetBit(_, to, _) => 2 + to.cycles(true),
         }
     }
 }
@@ -303,6 +305,9 @@ impl fmt::Display for Instruction {
             Instruction::Swap(to) => write!(f, "swap {}", to),
             Instruction::Rst(address) => write!(f, "rst {}", address),
             Instruction::DAA => write!(f, "daa"),
+            Instruction::SetBit(bit, to, set) => {
+                write!(f, "{} {}, {}", if *set { "set" } else { "res" }, bit, to)
+            }
         }
     }
 }
