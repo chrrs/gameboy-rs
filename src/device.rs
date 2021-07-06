@@ -44,7 +44,7 @@ impl Device {
             .context("failed to execute next instruction")
             .unwrap();
 
-        if mmu.gpu.cycle(cycles) {
+        if mmu.gpu.cycle(4 * cycles) {
             self.update_framebuffers();
             true
         } else {
