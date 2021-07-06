@@ -196,11 +196,11 @@ impl Gpu {
         if !self.lcd_control.contains(LcdControl::BG_WINDOW_ENABLE) {
             self.framebuffer.fill(0);
         } else {
-            self.render_background();
+            self.render_background_scanline();
         }
     }
 
-    fn render_background(&mut self) {
+    fn render_background_scanline(&mut self) {
         let mut address = if self.lcd_control.contains(LcdControl::BG_TILEMAP_AREA) {
             0x1c00
         } else {
