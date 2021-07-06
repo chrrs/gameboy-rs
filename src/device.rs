@@ -27,6 +27,7 @@ impl Device {
     pub fn reset(&mut self) {
         self.cpu.reset();
         self.mmu.gpu.reset();
+        self.mmu.use_bios = true;
     }
 
     pub fn step_frame(&mut self) {

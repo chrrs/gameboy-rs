@@ -3,7 +3,8 @@ use crate::{cartridge::Cartridge, gpu::Gpu};
 use super::{Memory, MemoryError, MemoryOperation};
 
 pub struct Mmu {
-    bios: Option<&'static [u8]>,
+    bios: &'static [u8],
+    pub use_bios: bool,
     pub cart: Cartridge,
     pub gpu: Gpu,
     wram: Box<[u8; 0x2000]>,
@@ -13,7 +14,8 @@ pub struct Mmu {
 impl Mmu {
     pub fn new(bios: &'static [u8], cart: Cartridge, gpu: Gpu) -> Mmu {
         Mmu {
-            bios: Some(bios),
+            bios,
+            use_bios: true,
             cart,
             gpu,
             wram: Box::new([0; 0x2000]),
@@ -26,8 +28,8 @@ impl Memory for Mmu {
     fn read(&self, address: u16) -> Result<u8, MemoryError> {
         match address {
             0..=0xff => {
-                if let Some(bios) = self.bios {
-                    Ok(bios[address as usize])
+                if self.use_bios {
+                    Ok(self.bios[address as usize])
                 } else {
                     Ok(self.cart.read(address))
                 }
@@ -54,7 +56,7 @@ impl Memory for Mmu {
     fn write(&mut self, address: u16, value: u8) -> Result<(), MemoryError> {
         match address {
             0..=0xff => {
-                if self.bios.is_some() {
+                if self.use_bios {
                     Err(MemoryError::Illegal {
                         address,
                         op: MemoryOperation::Write,
@@ -108,7 +110,7 @@ impl Memory for Mmu {
             0xff4b => Ok(()), // Window X
             0xff50 => {
                 if value != 0 {
-                    self.bios = None;
+                    self.use_bios = false;
                 }
 
                 Ok(())
