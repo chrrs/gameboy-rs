@@ -96,7 +96,8 @@ impl Device {
 
                 for x in 0..8 {
                     for y in 0..8 {
-                        let color = PALETTE[tile.get(x, y) as usize];
+                        let color =
+                            PALETTE[self.gpu().bg_palette[tile.get(x, y) as usize] as usize];
 
                         let index = 3 * (8 * tile_x + x + 16 * 8 * 8 * tile_y + 16 * 8 * y);
                         for (i, c) in color.iter().enumerate() {

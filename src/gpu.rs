@@ -63,6 +63,7 @@ pub struct Gpu {
     pub framebuffer: Box<[u8; 160 * 144]>,
     pub lcd_control: LcdControl,
     stat_interrupt_source: StatInterruptSource,
+    pub bg_palette: [u8; 4],
 }
 
 impl Gpu {
@@ -80,6 +81,7 @@ impl Gpu {
             framebuffer: Box::new([0; 160 * 144]),
             lcd_control: LcdControl::empty(),
             stat_interrupt_source: StatInterruptSource::empty(),
+            bg_palette: [0; 4],
         }
     }
 
@@ -224,7 +226,8 @@ impl Gpu {
         let mut tile_x = self.scroll_x % 8;
         for x in 0..160 {
             let index = x + 160 * self.line as usize;
-            self.framebuffer[index] = self.tiles[tile].get(tile_x as usize, tile_y as usize);
+            self.framebuffer[index] =
+                self.bg_palette[self.tiles[tile].get(tile_x as usize, tile_y as usize) as usize];
 
             tile_x += 1;
             if tile_x == 8 {

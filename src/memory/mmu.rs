@@ -50,6 +50,7 @@ impl Memory for Mmu {
             0xff43 => Ok(self.gpu.scroll_x),
             0xff44 => Ok(self.gpu.scanline()),
             0xff45 => Ok(self.gpu.lyc),
+            0xff47 => Ok(pack_palette(self.gpu.bg_palette)),
             0xff80..=0xfffe => Ok(self.hram[address as usize - 0xff80]),
             0xffff => Ok(0), // Enable interrupts
             _ => Err(MemoryError::Unmapped {
@@ -119,7 +120,10 @@ impl Memory for Mmu {
                 self.gpu.lyc = value;
                 Ok(())
             }
-            0xff47 => Ok(()), // BG Palette Data
+            0xff47 => {
+                self.gpu.bg_palette = unpack_palette(value);
+                Ok(())
+            }
             0xff48 => Ok(()), // Object Palette 0 Data
             0xff49 => Ok(()), // Object Palette 1 Data
             0xff4a => Ok(()), // Window Y
@@ -143,4 +147,24 @@ impl Memory for Mmu {
             }),
         }
     }
+}
+
+pub fn pack_palette(palette: [u8; 4]) -> u8 {
+    let mut value = 0;
+
+    for (i, el) in palette.iter().enumerate() {
+        value |= el << (i * 2);
+    }
+
+    value
+}
+
+pub fn unpack_palette(palette: u8) -> [u8; 4] {
+    let mut value = [0; 4];
+
+    for (i, el) in value.iter_mut().enumerate() {
+        *el = (palette & (0b11 << (i * 2))) >> (i * 2);
+    }
+
+    value
 }
