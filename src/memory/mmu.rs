@@ -45,9 +45,11 @@ impl Memory for Mmu {
             0xfea0..=0xfeff => Ok(0xff),
             0xff00 => Ok(0xff), // Joypad P1
             0xff40 => Ok(self.gpu.lcd_control.bits()),
+            0xff41 => Ok(self.gpu.stat()),
             0xff42 => Ok(self.gpu.scroll_y),
             0xff43 => Ok(self.gpu.scroll_x),
             0xff44 => Ok(self.gpu.scanline()),
+            0xff45 => Ok(self.gpu.lyc),
             0xff80..=0xfffe => Ok(self.hram[address as usize - 0xff80]),
             0xffff => Ok(0), // Enable interrupts
             _ => Err(MemoryError::Unmapped {
@@ -100,7 +102,10 @@ impl Memory for Mmu {
                 self.gpu.lcd_control = LcdControl::from_bits_truncate(value);
                 Ok(())
             }
-            0xff41 => Ok(()), // LCD Stat
+            0xff41 => {
+                self.gpu.set_stat(value);
+                Ok(())
+            }
             0xff42 => {
                 self.gpu.scroll_y = value;
                 Ok(())
@@ -110,6 +115,10 @@ impl Memory for Mmu {
                 Ok(())
             }
             0xff44 => Err(MemoryError::ReadOnly { address }),
+            0xff45 => {
+                self.gpu.lyc = value;
+                Ok(())
+            }
             0xff47 => Ok(()), // BG Palette Data
             0xff48 => Ok(()), // Object Palette 0 Data
             0xff49 => Ok(()), // Object Palette 1 Data

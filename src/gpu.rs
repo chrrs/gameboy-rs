@@ -13,11 +13,22 @@ bitflags! {
     }
 }
 
+bitflags! {
+    pub struct StatInterruptSource: u8 {
+        const HBLANK = 1 << 3;
+        const VBLANK = 1 << 4;
+        const OAM = 1 << 5;
+        const LYC_LY = 1 << 6;
+    }
+}
+
+#[derive(Clone, Copy)]
+#[repr(u8)]
 pub enum GpuMode {
-    HBlank,
-    VBlank,
-    OamRead,
-    VramRead,
+    HBlank = 0,
+    VBlank = 1,
+    OamRead = 2,
+    VramRead = 3,
 }
 
 #[derive(Clone, Copy)]
@@ -44,12 +55,14 @@ pub struct Gpu {
     pub oam: Box<[u8; 0xa0]>,
     mode_cycles: usize,
     line: u8,
+    pub lyc: u8,
     mode: GpuMode,
     pub scroll_x: u8,
     pub scroll_y: u8,
     pub tiles: Box<[Tile; 384]>,
     pub framebuffer: Box<[u8; 160 * 144]>,
     pub lcd_control: LcdControl,
+    stat_interrupt_source: StatInterruptSource,
 }
 
 impl Gpu {
@@ -60,11 +73,13 @@ impl Gpu {
             mode: GpuMode::HBlank,
             mode_cycles: 0,
             line: 0,
+            lyc: 0,
             scroll_x: 0,
             scroll_y: 0,
             tiles: Box::new([Tile::new(); 384]),
             framebuffer: Box::new([0; 160 * 144]),
             lcd_control: LcdControl::empty(),
+            stat_interrupt_source: StatInterruptSource::empty(),
         }
     }
 
@@ -74,6 +89,21 @@ impl Gpu {
         self.line = 0;
         self.mode = GpuMode::HBlank;
         self.mode_cycles = 0;
+    }
+
+    pub fn stat(&self) -> u8 {
+        let mut value = self.stat_interrupt_source.bits();
+        value |= self.mode as u8;
+
+        if self.line == self.lyc {
+            value |= 1 << 2;
+        }
+
+        value
+    }
+
+    pub fn set_stat(&mut self, value: u8) {
+        self.stat_interrupt_source = StatInterruptSource::from_bits_truncate(value);
     }
 
     pub fn scanline(&self) -> u8 {
