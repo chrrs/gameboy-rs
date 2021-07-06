@@ -167,7 +167,7 @@ pub enum Instruction {
     CallIf(CpuFlag, bool, u16),
     Compare(InstructionOperand),
     Add(CpuRegister, InstructionOperand, bool),
-    Subtract(InstructionOperand),
+    Subtract(InstructionOperand, bool),
     Push(CpuRegister),
     Pop(CpuRegister),
     RotateLeftA,
@@ -213,7 +213,7 @@ impl Instruction {
             Instruction::Add(to, from, _) => {
                 1 + from.cycles(false) + if to.is_16bit() { 1 } else { 0 }
             }
-            Instruction::Subtract(from) => 1 + from.cycles(false),
+            Instruction::Subtract(from, _) => 1 + from.cycles(false),
             Instruction::Push(_) => 4,
             Instruction::Pop(_) => 3,
             Instruction::RotateLeftA => 1,
@@ -277,7 +277,9 @@ impl fmt::Display for Instruction {
                 to,
                 from
             ),
-            Instruction::Subtract(from) => write!(f, "sub {}", from),
+            Instruction::Subtract(from, use_carry) => {
+                write!(f, "{} {}", if *use_carry { "sbc" } else { "sub" }, from)
+            }
             Instruction::Push(from) => write!(f, "push {}", from),
             Instruction::Pop(from) => write!(f, "pop {}", from),
             Instruction::RotateLeftA => write!(f, "rla"),

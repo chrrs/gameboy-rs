@@ -552,9 +552,16 @@ impl Cpu {
                 let value = self.get_u8(mem, to)?;
                 self.subtract_a(value, false);
             }
-            Instruction::Subtract(from) => {
+            Instruction::Subtract(from, use_carry) => {
                 let value = self.get_u8(mem, from)?;
-                self.a = self.subtract_a(value, false);
+                self.a = self.subtract_a(
+                    value,
+                    if use_carry {
+                        self.get_flag(CpuFlag::Carry)
+                    } else {
+                        false
+                    },
+                );
             }
             Instruction::Add(to, from, use_carry) => {
                 let carry = if use_carry {
@@ -878,14 +885,22 @@ impl Cpu {
             0x8d => instr!(Add (R A) (:R L) (= true)),
             0x8e => instr!(Add (R A) (@R HL) (= true)),
             0x8f => instr!(Add (R A) (:R A) (= true)),
-            0x90 => instr!(Subtract (:R B)),
-            0x91 => instr!(Subtract (:R C)),
-            0x92 => instr!(Subtract (:R D)),
-            0x93 => instr!(Subtract (:R E)),
-            0x94 => instr!(Subtract (:R H)),
-            0x95 => instr!(Subtract (:R L)),
-            0x96 => instr!(Subtract (@R HL)),
-            0x97 => instr!(Subtract (:R A)),
+            0x90 => instr!(Subtract (:R B) (= false)),
+            0x91 => instr!(Subtract (:R C) (= false)),
+            0x92 => instr!(Subtract (:R D) (= false)),
+            0x93 => instr!(Subtract (:R E) (= false)),
+            0x94 => instr!(Subtract (:R H) (= false)),
+            0x95 => instr!(Subtract (:R L) (= false)),
+            0x96 => instr!(Subtract (@R HL) (= false)),
+            0x97 => instr!(Subtract (:R A) (= false)),
+            0x98 => instr!(Subtract (:R B) (= true)),
+            0x99 => instr!(Subtract (:R C) (= true)),
+            0x9a => instr!(Subtract (:R D) (= true)),
+            0x9b => instr!(Subtract (:R E) (= true)),
+            0x9c => instr!(Subtract (:R H) (= true)),
+            0x9d => instr!(Subtract (:R L) (= true)),
+            0x9e => instr!(Subtract (@R HL) (= true)),
+            0x9f => instr!(Subtract (:R A) (= true)),
             0xa0 => instr!(And (:R B)),
             0xa1 => instr!(And (:R C)),
             0xa2 => instr!(And (:R D)),
@@ -1067,11 +1082,12 @@ impl Cpu {
             0xd2 => instr!(JumpIf (F Carry) (= false) ABS16),
             0xd4 => instr!(CallIf (F Carry) (= false) ABS16),
             0xd5 => instr!(Push (R DE)),
-            0xd6 => instr!(Subtract IMM8),
+            0xd6 => instr!(Subtract IMM8 (= false)),
             0xd7 => instr!(Rst (= 2)),
             0xd8 => instr!(ReturnIf (F Carry) (= true)),
             0xda => instr!(JumpIf (F Carry) (= true) ABS16),
             0xdc => instr!(CallIf (F Carry) (= false) ABS16),
+            0xde => instr!(Subtract IMM8 (= true)),
             0xdf => instr!(Rst (= 3)),
             0xe0 => instr!(Load (@IMM8 0xff00) (:R A)),
             0xe1 => instr!(Pop (R HL)),
