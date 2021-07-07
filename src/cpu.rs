@@ -563,53 +563,46 @@ impl Cpu {
                     },
                 );
             }
-            Instruction::Add(to, from, use_carry) => {
+            Instruction::Add8(to, from, use_carry) => {
                 let carry = if use_carry {
                     self.get_flag(CpuFlag::Carry) as u8
                 } else {
                     0
                 };
 
-                if to.is_16bit() {
-                    let value = self.get_reg_u16(to)?;
-                    let right = self.get_u16(mem, from)?;
-                    let result = value.wrapping_add(right).wrapping_add(carry as u16);
+                let value = self.get_reg_u8(to)?;
+                let right = self.get_u8(mem, from)?;
+                let result = value.wrapping_add(right).wrapping_add(carry);
 
-                    self.set_reg_u16(to, result)?;
+                self.set_reg_u8(to, result)?;
 
-                    self.set_flag(CpuFlag::Subtraction, false);
-                    self.set_flag(
-                        CpuFlag::HalfCarry,
-                        (value & 0xff)
-                            .wrapping_add(right & 0xff)
-                            .wrapping_add(carry as u16)
-                            > 0xff,
-                    );
-                    self.set_flag(
-                        CpuFlag::Carry,
-                        result as u32 != value as u32 + right as u32 + carry as u32,
-                    );
+                self.set_flag(CpuFlag::Zero, result == 0);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(
+                    CpuFlag::HalfCarry,
+                    (value & 0xf).wrapping_add(right & 0xf).wrapping_add(carry) > 0xf,
+                );
+                self.set_flag(
+                    CpuFlag::Carry,
+                    result as u16 != value as u16 + right as u16 + carry as u16,
+                );
+            }
+            Instruction::Add16(to, from) => {
+                let value = self.get_reg_u16(to)?;
+                let right = self.get_u16(mem, from)?;
+                let result = value.wrapping_add(right);
 
-                    if let CpuRegister::SP = to {
-                        self.set_flag(CpuFlag::Zero, false);
-                    }
-                } else {
-                    let value = self.get_reg_u8(to)?;
-                    let right = self.get_u8(mem, from)?;
-                    let result = value.wrapping_add(right).wrapping_add(carry);
+                self.set_reg_u16(to, result)?;
 
-                    self.set_reg_u8(to, result)?;
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(
+                    CpuFlag::HalfCarry,
+                    (value & 0xfff).wrapping_add(right & 0xfff) > 0xfff,
+                );
+                self.set_flag(CpuFlag::Carry, result < value);
 
-                    self.set_flag(CpuFlag::Zero, result == 0);
-                    self.set_flag(CpuFlag::Subtraction, false);
-                    self.set_flag(
-                        CpuFlag::HalfCarry,
-                        (value & 0xf).wrapping_add(right & 0xf).wrapping_add(carry) > 0xf,
-                    );
-                    self.set_flag(
-                        CpuFlag::Carry,
-                        result as u16 != value as u16 + right as u16 + carry as u16,
-                    );
+                if let CpuRegister::SP = to {
+                    self.set_flag(CpuFlag::Zero, false);
                 }
             }
             Instruction::DisableInterrupts => {
@@ -771,8 +764,8 @@ impl Cpu {
             0x05 => instr!(Decrement (:R B)),
             0x06 => instr!(Load (:R B) IMM8),
             // 0x08 => instr!(Load (@IMM16) (:R SP)),
-            0x09 => instr!(Add (R HL) (:R BC) (= false)),
-            0x0a => instr!(Add (R A) (@R BC) (= false)),
+            0x09 => instr!(Add16 (R HL) (:R BC)),
+            0x0a => instr!(Add8 (R A) (@R BC) (= false)),
             0x0b => instr!(Decrement (:R BC)),
             0x0c => instr!(Increment (:R C)),
             0x0d => instr!(Decrement (:R C)),
@@ -786,7 +779,7 @@ impl Cpu {
             0x16 => instr!(Load (:R D) IMM8),
             0x17 => instr!(RotateLeftA),
             0x18 => instr!(JumpRelative REL8),
-            0x19 => instr!(Add (R HL) (:R DE) (= false)),
+            0x19 => instr!(Add16 (R HL) (:R DE)),
             0x1a => instr!(Load (:R A) (@R DE)),
             0x1b => instr!(Decrement (:R DE)),
             0x1c => instr!(Increment (:R E)),
@@ -802,7 +795,7 @@ impl Cpu {
             0x26 => instr!(Load (:R H) IMM8),
             0x27 => instr!(DAA),
             0x28 => instr!(JumpRelativeIf (F Zero) (= true) REL8),
-            0x29 => instr!(Add (R HL) (:R HL) (= false)),
+            0x29 => instr!(Add16 (R HL) (:R HL)),
             0x2a => instr!(Load (:R A) (@R+ HL)),
             0x2b => instr!(Decrement (:R HL)),
             0x2c => instr!(Increment (:R L)),
@@ -817,7 +810,7 @@ impl Cpu {
             0x35 => instr!(Decrement (@R HL)),
             0x36 => instr!(Load (@R HL) IMM8),
             0x38 => instr!(JumpRelativeIf (F Carry) (= true) REL8),
-            0x39 => instr!(Add (R HL) (:R SP) (= false)),
+            0x39 => instr!(Add16 (R HL) (:R SP)),
             0x3a => instr!(Load (:R A) (@R- HL)),
             0x3b => instr!(Decrement (:R SP)),
             0x3c => instr!(Increment (:R A)),
@@ -886,22 +879,22 @@ impl Cpu {
             0x7d => instr!(Load (:R A) (:R L)),
             0x7e => instr!(Load (:R A) (@R HL)),
             0x7f => instr!(Load (:R A) (:R A)),
-            0x80 => instr!(Add (R A) (:R B) (= false)),
-            0x81 => instr!(Add (R A) (:R C) (= false)),
-            0x82 => instr!(Add (R A) (:R D) (= false)),
-            0x83 => instr!(Add (R A) (:R E) (= false)),
-            0x84 => instr!(Add (R A) (:R H) (= false)),
-            0x85 => instr!(Add (R A) (:R L) (= false)),
-            0x86 => instr!(Add (R A) (@R HL) (= false)),
-            0x87 => instr!(Add (R A) (:R A) (= false)),
-            0x88 => instr!(Add (R A) (:R B) (= true)),
-            0x89 => instr!(Add (R A) (:R C) (= true)),
-            0x8a => instr!(Add (R A) (:R D) (= true)),
-            0x8b => instr!(Add (R A) (:R E) (= true)),
-            0x8c => instr!(Add (R A) (:R H) (= true)),
-            0x8d => instr!(Add (R A) (:R L) (= true)),
-            0x8e => instr!(Add (R A) (@R HL) (= true)),
-            0x8f => instr!(Add (R A) (:R A) (= true)),
+            0x80 => instr!(Add8 (R A) (:R B) (= false)),
+            0x81 => instr!(Add8 (R A) (:R C) (= false)),
+            0x82 => instr!(Add8 (R A) (:R D) (= false)),
+            0x83 => instr!(Add8 (R A) (:R E) (= false)),
+            0x84 => instr!(Add8 (R A) (:R H) (= false)),
+            0x85 => instr!(Add8 (R A) (:R L) (= false)),
+            0x86 => instr!(Add8 (R A) (@R HL) (= false)),
+            0x87 => instr!(Add8 (R A) (:R A) (= false)),
+            0x88 => instr!(Add8 (R A) (:R B) (= true)),
+            0x89 => instr!(Add8 (R A) (:R C) (= true)),
+            0x8a => instr!(Add8 (R A) (:R D) (= true)),
+            0x8b => instr!(Add8 (R A) (:R E) (= true)),
+            0x8c => instr!(Add8 (R A) (:R H) (= true)),
+            0x8d => instr!(Add8 (R A) (:R L) (= true)),
+            0x8e => instr!(Add8 (R A) (@R HL) (= true)),
+            0x8f => instr!(Add8 (R A) (:R A) (= true)),
             0x90 => instr!(Subtract (:R B) (= false)),
             0x91 => instr!(Subtract (:R C) (= false)),
             0x92 => instr!(Subtract (:R D) (= false)),
@@ -956,7 +949,7 @@ impl Cpu {
             0xc3 => instr!(Jump IMM16),
             0xc4 => instr!(CallIf (F Zero) (= false) ABS16),
             0xc5 => instr!(Push (R BC)),
-            0xc6 => instr!(Add (R A) IMM8 (= false)),
+            0xc6 => instr!(Add8 (R A) IMM8 (= false)),
             0xc7 => instr!(Rst (= 0)),
             0xc8 => instr!(ReturnIf (F Zero) (= true)),
             0xc9 => instr!(Return),
@@ -1220,7 +1213,7 @@ impl Cpu {
             }
             0xcc => instr!(CallIf (F Zero) (= true) ABS16),
             0xcd => instr!(Call ABS16),
-            0xce => instr!(Add (R A) IMM8 (= true)),
+            0xce => instr!(Add8 (R A) IMM8 (= true)),
             0xcf => instr!(Rst (= 1)),
             0xd0 => instr!(ReturnIf (F Carry) (= false)),
             0xd1 => instr!(Pop (R DE)),

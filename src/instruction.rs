@@ -166,7 +166,8 @@ pub enum Instruction {
     Call(u16),
     CallIf(CpuFlag, bool, u16),
     Compare(InstructionOperand),
-    Add(CpuRegister, InstructionOperand, bool),
+    Add8(CpuRegister, InstructionOperand, bool),
+    Add16(CpuRegister, InstructionOperand),
     Subtract(InstructionOperand, bool),
     Push(CpuRegister),
     Pop(CpuRegister),
@@ -211,9 +212,8 @@ impl Instruction {
             Instruction::Call(_) => 6,
             Instruction::CallIf(_, _, _) => 3,
             Instruction::Compare(to) => 1 + to.cycles(false),
-            Instruction::Add(to, from, _) => {
-                1 + from.cycles(false) + if to.is_16bit() { 1 } else { 0 }
-            }
+            Instruction::Add8(_, from, _) => 1 + from.cycles(false),
+            Instruction::Add16(_, from) => 2 + from.cycles(false),
             Instruction::Subtract(from, _) => 1 + from.cycles(false),
             Instruction::Push(_) => 4,
             Instruction::Pop(_) => 3,
@@ -272,13 +272,14 @@ impl fmt::Display for Instruction {
                 )
             }
             Instruction::Compare(from) => write!(f, "cp {}", from),
-            Instruction::Add(to, from, use_carry) => write!(
+            Instruction::Add8(to, from, use_carry) => write!(
                 f,
                 "{} {}, {}",
                 if *use_carry { "adc" } else { "add" },
                 to,
                 from
             ),
+            Instruction::Add16(to, from) => write!(f, "add {}, {}", to, from),
             Instruction::Subtract(from, use_carry) => {
                 write!(f, "{} {}", if *use_carry { "sbc" } else { "sub" }, from)
             }
