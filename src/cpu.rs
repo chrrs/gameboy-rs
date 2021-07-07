@@ -572,17 +572,22 @@ impl Cpu {
 
                 if to.is_16bit() {
                     let value = self.get_reg_u16(to)?;
-                    let result = value
-                        .wrapping_add(self.get_u16(mem, from)?)
-                        .wrapping_add(carry as u16);
+                    let right = self.get_u16(mem, from)?;
+                    let result = value.wrapping_add(right).wrapping_add(carry as u16);
 
                     self.set_reg_u16(to, result)?;
 
                     self.set_flag(CpuFlag::Subtraction, false);
-                    self.set_flag(CpuFlag::HalfCarry, result & 0x10 != 0);
+                    self.set_flag(
+                        CpuFlag::HalfCarry,
+                        (value & 0xff)
+                            .wrapping_add(right & 0xff)
+                            .wrapping_add(carry as u16)
+                            > 0xff,
+                    );
                     self.set_flag(
                         CpuFlag::Carry,
-                        (result < value) || (carry == 1 && value == result),
+                        result as u32 != value as u32 + right as u32 + carry as u32,
                     );
 
                     if let CpuRegister::SP = to {
@@ -590,18 +595,20 @@ impl Cpu {
                     }
                 } else {
                     let value = self.get_reg_u8(to)?;
-                    let result = value
-                        .wrapping_add(self.get_u8(mem, from)?)
-                        .wrapping_add(carry);
+                    let right = self.get_u8(mem, from)?;
+                    let result = value.wrapping_add(right).wrapping_add(carry);
 
                     self.set_reg_u8(to, result)?;
 
                     self.set_flag(CpuFlag::Zero, result == 0);
                     self.set_flag(CpuFlag::Subtraction, false);
-                    self.set_flag(CpuFlag::HalfCarry, result & 0x10 != 0);
+                    self.set_flag(
+                        CpuFlag::HalfCarry,
+                        (value & 0xf).wrapping_add(right & 0xf).wrapping_add(carry) > 0xf,
+                    );
                     self.set_flag(
                         CpuFlag::Carry,
-                        (result < value) || (carry == 1 && value == result),
+                        result as u16 != value as u16 + right as u16 + carry as u16,
                     );
                 }
             }
@@ -676,7 +683,6 @@ impl Cpu {
 
     fn subtract_a(&mut self, value: u8, carry: bool) -> u8 {
         let carry = carry as u8;
-        let previous = self.a;
 
         let result = self.a.wrapping_sub(value).wrapping_sub(carry);
 
@@ -684,11 +690,11 @@ impl Cpu {
         self.set_flag(CpuFlag::Subtraction, true);
         self.set_flag(
             CpuFlag::HalfCarry,
-            (result & 0xf).wrapping_sub(value & 0xf).wrapping_sub(carry) & 0x10 != 0,
+            (self.a & 0xf).wrapping_sub(value & 0xf).wrapping_sub(carry) & 0x10 != 0,
         );
         self.set_flag(
             CpuFlag::Carry,
-            (result > previous) || (carry == 1 && result == previous),
+            (self.a as u16) < (value as u16 + carry as u16),
         );
 
         result
