@@ -4,6 +4,11 @@ use anyhow::Context;
 
 use crate::{bios::DMG_BIOS, cartridge::Cartridge, cpu::Cpu, gpu::Gpu, memory::mmu::Mmu};
 
+#[cfg(feature = "dump-log")]
+use crate::memory::Memory;
+#[cfg(feature = "dump-log")]
+use std::{fs::File, io::Write};
+
 const PALETTE: [[u8; 3]; 4] = [[255, 255, 255], [192, 192, 192], [96, 96, 96], [0, 0, 0]];
 
 pub struct Device {
@@ -12,6 +17,9 @@ pub struct Device {
 
     tile_framebuffer: Box<[u8; 3 * 16 * 24 * 8 * 8]>,
     display_framebuffer: Box<[u8; 3 * 160 * 144]>,
+
+    #[cfg(feature = "dump-log")]
+    log: File,
 }
 
 impl Device {
@@ -21,6 +29,9 @@ impl Device {
             mmu: Mmu::new(DMG_BIOS, cart, Gpu::new()),
             tile_framebuffer: Box::new([0; 3 * 16 * 24 * 8 * 8]),
             display_framebuffer: Box::new([0; 3 * 160 * 144]),
+
+            #[cfg(feature = "dump-log")]
+            log: File::create("log.txt").expect("cannot create dump log file"),
         }
     }
 
@@ -39,7 +50,17 @@ impl Device {
     }
 
     pub fn step(&mut self) -> bool {
+        #[cfg(feature = "dump-log")]
+        let Device { cpu, mmu, log, .. } = self;
+
+        #[cfg(feature = "dump-log")]
+        writeln!(log, "A: {:02X} F: {:02X} B: {:02X} C: {:02X} D: {:02X} E: {:02X} H: {:02X} L: {:02X} SP: {:04X} PC: {:02X}:{:04X} ({:02X} {:02X} {:02X} {:02X})",
+            cpu.a, cpu.f, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.sp, 0, cpu.pc, mmu.read(cpu.pc).unwrap(), mmu.read(cpu.pc + 1).unwrap(), mmu.read(cpu.pc + 2).unwrap(), mmu.read(cpu.pc + 3).unwrap())
+            .unwrap();
+
+        #[cfg(not(feature = "dump-log"))]
         let Device { cpu, mmu, .. } = self;
+
         let cycles = cpu
             .exec_next_instruction(mmu)
             .context("failed to execute next instruction")
