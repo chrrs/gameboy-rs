@@ -154,6 +154,33 @@ impl fmt::Display for InstructionOperand {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SPOps {
+    AddOffset(i8),
+    LoadIntoHL(i8),
+    LoadFromHL,
+}
+
+impl SPOps {
+    pub fn cycles(&self) -> usize {
+        match self {
+            SPOps::AddOffset(_) => 4,
+            SPOps::LoadIntoHL(_) => 3,
+            SPOps::LoadFromHL => 2,
+        }
+    }
+}
+
+impl fmt::Display for SPOps {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SPOps::AddOffset(offset) => write!(f, "add SP, {}", offset),
+            SPOps::LoadIntoHL(offset) => write!(f, "ld HL, SP{:+}", offset),
+            SPOps::LoadFromHL => write!(f, "ld SP, HL"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Instruction {
     Noop,
@@ -191,6 +218,7 @@ pub enum Instruction {
     Rst(u8),
     DAA,
     SetBit(u8, InstructionOperand, bool),
+    SPOps(SPOps),
 }
 
 impl Instruction {
@@ -237,6 +265,7 @@ impl Instruction {
             Instruction::Rst(_) => 4,
             Instruction::DAA => 1,
             Instruction::SetBit(_, to, _) => 2 + to.cycles(true),
+            Instruction::SPOps(op) => op.cycles(),
         }
     }
 }
@@ -315,6 +344,7 @@ impl fmt::Display for Instruction {
             Instruction::SetBit(bit, to, set) => {
                 write!(f, "{} {}, {}", if *set { "set" } else { "res" }, bit, to)
             }
+            Instruction::SPOps(op) => op.fmt(f),
         }
     }
 }

@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fmt, u8};
 use thiserror::Error;
 
 use crate::{
-    instruction::{CpuRegister, Instruction, InstructionOperand},
+    instruction::{CpuRegister, Instruction, InstructionOperand, SPOps},
     memory::{Memory, MemoryError, MemoryOperation},
 };
 
@@ -689,10 +689,40 @@ impl Cpu {
 
                 self.set_u8(mem, to, value)?;
             }
+            Instruction::SPOps(op) => match op {
+                SPOps::AddOffset(offset) => {
+                    self.sp = self.offset_sp(offset);
+                }
+                SPOps::LoadIntoHL(offset) => {
+                    let value = self.offset_sp(offset);
+                    self.set_hl(value);
+                }
+                SPOps::LoadFromHL => {
+                    self.sp = self.hl();
+                }
+            },
             _ => panic!("unimplemented instruction {:x?}", instruction),
         }
 
         Ok(cycles)
+    }
+
+    fn offset_sp(&mut self, offset: i8) -> u16 {
+        let signed_result = (self.sp as i16).wrapping_add(offset as i16);
+
+        self.set_flag(CpuFlag::Zero, false);
+        self.set_flag(CpuFlag::Subtraction, false);
+
+        self.set_flag(
+            CpuFlag::HalfCarry,
+            ((self.sp as i16) ^ signed_result ^ (offset as i16)) & 0x10 != 0,
+        );
+        self.set_flag(
+            CpuFlag::Carry,
+            ((self.sp as i16) ^ signed_result ^ (offset as i16)) & 0x100 != 0,
+        );
+
+        self.sp.wrapping_add(offset as i16 as u16)
     }
 
     fn subtract_a(&mut self, value: u8, carry: bool) -> u8 {
@@ -1257,7 +1287,7 @@ impl Cpu {
             0xe5 => instr!(Push (R HL)),
             0xe6 => instr!(And IMM8),
             0xe7 => instr!(Rst (= 4)),
-            // 0xe8 => instr!(Add (R SP) IMM8),
+            0xe8 => instr!(SPOps (= SPOps::AddOffset(self.fetch_u8(mem)? as i8))),
             0xe9 => instr!(Jump (:R HL)),
             0xea => instr!(Load (@IMM16) (:R A)),
             0xee => instr!(Xor IMM8),
@@ -1269,8 +1299,8 @@ impl Cpu {
             0xf5 => instr!(Push (R AF)),
             0xf6 => instr!(Or IMM8),
             0xf7 => instr!(Rst (= 6)),
-            // 0xf8 => instr!(Load (:R HL) (:R SP IMM8))
-            // 0xf9 => instr!(Load (:R SP) (:R HL)),
+            0xf8 => instr!(SPOps (= SPOps::LoadIntoHL(self.fetch_u8(mem)? as i8))),
+            0xf9 => instr!(SPOps (= SPOps::LoadFromHL)),
             0xfa => instr!(Load (:R A) (@IMM16)),
             0xfb => instr!(EnableInterrupts),
             0xfe => instr!(Compare IMM8),
