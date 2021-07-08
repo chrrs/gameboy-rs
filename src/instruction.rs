@@ -204,9 +204,9 @@ pub enum Instruction {
     Subtract(InstructionOperand, bool),
     Push(CpuRegister),
     Pop(CpuRegister),
-    RotateLeftA,
+    RotateLeftA(bool),
     RotateLeft(InstructionOperand, bool),
-    RotateRightA,
+    RotateRightA(bool),
     RotateRight(InstructionOperand, bool),
     ShiftRight(InstructionOperand, bool),
     Return,
@@ -252,9 +252,9 @@ impl Instruction {
             Instruction::Subtract(from, _) => 1 + from.cycles(false),
             Instruction::Push(_) => 4,
             Instruction::Pop(_) => 3,
-            Instruction::RotateLeftA => 1,
+            Instruction::RotateLeftA(_) => 1,
             Instruction::RotateLeft(to, _) => 2 + to.cycles(true),
-            Instruction::RotateRightA => 1,
+            Instruction::RotateRightA(_) => 1,
             Instruction::RotateRight(to, _) => 2 + to.cycles(true),
             Instruction::ShiftRight(to, _) => 2 + to.cycles(true),
             Instruction::Return => 4,
@@ -322,11 +322,15 @@ impl fmt::Display for Instruction {
             }
             Instruction::Push(from) => write!(f, "push {}", from),
             Instruction::Pop(from) => write!(f, "pop {}", from),
-            Instruction::RotateLeftA => write!(f, "rla"),
+            Instruction::RotateLeftA(use_carry) => {
+                write!(f, "rl{}a", if *use_carry { "c" } else { "" })
+            }
             Instruction::RotateLeft(to, use_carry) => {
                 write!(f, "rl{} {}", if *use_carry { "c" } else { "" }, to)
             }
-            Instruction::RotateRightA => write!(f, "rra"),
+            Instruction::RotateRightA(use_carry) => {
+                write!(f, "rr{}a", if *use_carry { "c" } else { "" })
+            }
             Instruction::RotateRight(to, use_carry) => {
                 write!(f, "rr{} {}", if *use_carry { "c" } else { "" }, to)
             }

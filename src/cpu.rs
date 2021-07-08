@@ -543,15 +543,35 @@ impl Cpu {
                 self.set_flag(CpuFlag::Subtraction, false);
                 self.set_flag(CpuFlag::HalfCarry, false);
             }
-            Instruction::RotateLeftA => {
-                let carry = self.get_flag(CpuFlag::Carry) as u8;
+            Instruction::RotateLeftA(use_carry) => {
+                let bit = if use_carry {
+                    self.get_flag(CpuFlag::Carry) as u8
+                } else {
+                    self.a & 0x80 >> 7
+                };
+
                 self.set_flag(CpuFlag::Carry, self.a & 0x80 != 0);
-                self.a = self.a << 1 | carry;
+
+                self.a = self.a << 1 | bit;
+
+                self.set_flag(CpuFlag::Zero, false);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, false);
             }
-            Instruction::RotateRightA => {
-                let carry = self.get_flag(CpuFlag::Carry) as u8;
+            Instruction::RotateRightA(use_carry) => {
+                let bit = if use_carry {
+                    (self.get_flag(CpuFlag::Carry) as u8) << 7
+                } else {
+                    (self.a & 1) << 7
+                };
+
                 self.set_flag(CpuFlag::Carry, self.a & 1 != 0);
-                self.a = self.a >> 1 | (carry << 7);
+
+                self.a = self.a >> 1 | bit;
+
+                self.set_flag(CpuFlag::Zero, false);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, false);
             }
             Instruction::ShiftRight(to, zero) => {
                 let value = self.get_u8(mem, to)?;
@@ -830,6 +850,7 @@ impl Cpu {
             0x04 => instr!(Increment (:R B)),
             0x05 => instr!(Decrement (:R B)),
             0x06 => instr!(Load (:R B) IMM8),
+            0x07 => instr!(RotateLeftA (= false)),
             0x08 => instr!(Load (@@IMM16) (:R SP)),
             0x09 => instr!(Add16 (R HL) (:R BC)),
             0x0a => instr!(Add8 (R A) (@R BC) (= false)),
@@ -837,6 +858,7 @@ impl Cpu {
             0x0c => instr!(Increment (:R C)),
             0x0d => instr!(Decrement (:R C)),
             0x0e => instr!(Load (:R C) IMM8),
+            0x0f => instr!(RotateRightA (= false)),
             0x10 => instr!(Stop),
             0x11 => instr!(Load (:R DE) IMM16),
             0x12 => instr!(Load (@R DE) (:R A)),
@@ -844,7 +866,7 @@ impl Cpu {
             0x14 => instr!(Increment (:R D)),
             0x15 => instr!(Decrement (:R D)),
             0x16 => instr!(Load (:R D) IMM8),
-            0x17 => instr!(RotateLeftA),
+            0x17 => instr!(RotateLeftA (= true)),
             0x18 => instr!(JumpRelative REL8),
             0x19 => instr!(Add16 (R HL) (:R DE)),
             0x1a => instr!(Load (:R A) (@R DE)),
@@ -852,7 +874,7 @@ impl Cpu {
             0x1c => instr!(Increment (:R E)),
             0x1d => instr!(Decrement (:R E)),
             0x1e => instr!(Load (:R E) IMM8),
-            0x1f => instr!(RotateRightA),
+            0x1f => instr!(RotateRightA (= true)),
             0x20 => instr!(JumpRelativeIf (F Zero) (= false) REL8),
             0x21 => instr!(Load (:R HL) IMM16),
             0x22 => instr!(Load (@R+ HL) (:R A)),
