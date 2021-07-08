@@ -865,7 +865,7 @@ impl Cpu {
             0x07 => instr!(RotateLeftA (= false)),
             0x08 => instr!(Load (@@IMM16) (:R SP)),
             0x09 => instr!(Add16 (R HL) (:R BC)),
-            0x0a => instr!(Add8 (R A) (@R BC) (= false)),
+            0x0a => instr!(Load (:R A) (@R BC)),
             0x0b => instr!(Decrement (:R BC)),
             0x0c => instr!(Increment (:R C)),
             0x0d => instr!(Decrement (:R C)),
