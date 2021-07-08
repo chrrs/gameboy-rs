@@ -70,6 +70,7 @@ pub enum InstructionOperand {
     MemoryLocationRegisterIncrement(CpuRegister),
     OffsetMemoryLocationImmediate8(u16, u8),
     MemoryLocationImmediate16(u16),
+    DoubleMemoryLocationImmediate16(u16),
 }
 
 impl InstructionOperand {
@@ -84,6 +85,7 @@ impl InstructionOperand {
             InstructionOperand::MemoryLocationRegisterIncrement(_) => false,
             InstructionOperand::OffsetMemoryLocationImmediate8(_, _) => false,
             InstructionOperand::MemoryLocationImmediate16(_) => false,
+            InstructionOperand::DoubleMemoryLocationImmediate16(_) => true,
         }
     }
 
@@ -122,6 +124,7 @@ impl InstructionOperand {
             }
             InstructionOperand::OffsetMemoryLocationImmediate8(_, _) => 2,
             InstructionOperand::MemoryLocationImmediate16(_) => 3,
+            InstructionOperand::DoubleMemoryLocationImmediate16(_) => 4,
         }
     }
 }
@@ -142,6 +145,9 @@ impl fmt::Display for InstructionOperand {
                 write!(f, "({:#06x}+{:#04x})", offset, address)
             }
             InstructionOperand::MemoryLocationImmediate16(address) => {
+                write!(f, "({:#06x})", address)
+            }
+            InstructionOperand::DoubleMemoryLocationImmediate16(address) => {
                 write!(f, "({:#06x})", address)
             }
         }

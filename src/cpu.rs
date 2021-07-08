@@ -277,6 +277,12 @@ impl Cpu {
                 Ok(mem.read(offset + address as u16)?)
             }
             InstructionOperand::MemoryLocationImmediate16(address) => Ok(mem.read(address)?),
+            InstructionOperand::DoubleMemoryLocationImmediate16(_) => {
+                Err(CpuError::OperandSizeMismatch {
+                    op: MemoryOperation::Read,
+                    operand,
+                })
+            }
         }
     }
 
@@ -311,6 +317,12 @@ impl Cpu {
             }
             InstructionOperand::MemoryLocationImmediate16(address) => {
                 Ok(mem.write(address, value)?)
+            }
+            InstructionOperand::DoubleMemoryLocationImmediate16(_) => {
+                Err(CpuError::OperandSizeMismatch {
+                    op: MemoryOperation::Write,
+                    operand,
+                })
             }
             InstructionOperand::Immediate8(_) => Err(CpuError::ImmediateWrite),
             InstructionOperand::Immediate16(_) => Err(CpuError::ImmediateWrite),
@@ -348,12 +360,25 @@ impl Cpu {
                 Ok(mem.read(offset + address as u16)? as u16)
             }
             InstructionOperand::MemoryLocationImmediate16(address) => Ok(mem.read(address)? as u16),
+            InstructionOperand::DoubleMemoryLocationImmediate16(address) => {
+                Ok(mem.read(address)? as u16 + ((mem.read(address + 1)? as u16) << 8))
+            }
         }
     }
 
-    fn set_u16(&mut self, operand: InstructionOperand, value: u16) -> Result<(), CpuError> {
+    fn set_u16<M: Memory>(
+        &mut self,
+        mem: &mut M,
+        operand: InstructionOperand,
+        value: u16,
+    ) -> Result<(), CpuError> {
         match operand {
             InstructionOperand::Register(reg) => self.set_reg_u16(reg, value),
+            InstructionOperand::DoubleMemoryLocationImmediate16(address) => {
+                mem.write(address, value as u8)?;
+                mem.write(address + 1, (value >> 8) as u8)?;
+                Ok(())
+            }
             InstructionOperand::Immediate8(_) => Err(CpuError::ImmediateWrite),
             InstructionOperand::Immediate16(_) => Err(CpuError::ImmediateWrite),
             _ => Err(CpuError::OperandSizeMismatch {
@@ -382,7 +407,7 @@ impl Cpu {
             Instruction::Load(to, from) => {
                 if to.is_16bit() {
                     let val = self.get_u16(mem, from)?;
-                    self.set_u16(to, val)?;
+                    self.set_u16(mem, to, val)?;
                 } else {
                     let val = self.get_u8(mem, from)?;
                     self.set_u8(mem, to, val)?;
@@ -440,7 +465,7 @@ impl Cpu {
             Instruction::Increment(to) => {
                 if to.is_16bit() {
                     let val = self.get_u16(mem, to)?.wrapping_add(1);
-                    self.set_u16(to, val)?;
+                    self.set_u16(mem, to, val)?;
                 } else {
                     let ov = self.get_u8(mem, to)?;
                     let val = ov.wrapping_add(1);
@@ -454,7 +479,7 @@ impl Cpu {
             Instruction::Decrement(to) => {
                 if to.is_16bit() {
                     let val = self.get_u16(mem, to)?.wrapping_sub(1);
-                    self.set_u16(to, val)?;
+                    self.set_u16(mem, to, val)?;
                 } else {
                     let ov = self.get_u8(mem, to)?;
                     let val = ov.wrapping_sub(1);
@@ -600,10 +625,6 @@ impl Cpu {
                     (value & 0xfff).wrapping_add(right & 0xfff) > 0xfff,
                 );
                 self.set_flag(CpuFlag::Carry, result < value);
-
-                if let CpuRegister::SP = to {
-                    self.set_flag(CpuFlag::Zero, false);
-                }
             }
             Instruction::DisableInterrupts => {
                 // TODO: Implement interrupts
@@ -720,6 +741,9 @@ impl Cpu {
             (( @R- $reg:ident )) => {
                 InstructionOperand::MemoryLocationRegisterDecrement(CpuRegister::$reg)
             };
+            (( @@IMM16 )) => {
+                InstructionOperand::DoubleMemoryLocationImmediate16(self.fetch_u16(mem)?)
+            };
             (( @IMM16 )) => {
                 InstructionOperand::MemoryLocationImmediate16(self.fetch_u16(mem)?)
             };
@@ -763,7 +787,7 @@ impl Cpu {
             0x04 => instr!(Increment (:R B)),
             0x05 => instr!(Decrement (:R B)),
             0x06 => instr!(Load (:R B) IMM8),
-            // 0x08 => instr!(Load (@IMM16) (:R SP)),
+            0x08 => instr!(Load (@@IMM16) (:R SP)),
             0x09 => instr!(Add16 (R HL) (:R BC)),
             0x0a => instr!(Add8 (R A) (@R BC) (= false)),
             0x0b => instr!(Decrement (:R BC)),
