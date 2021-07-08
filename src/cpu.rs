@@ -514,7 +514,7 @@ impl Cpu {
                 let bit = if use_carry {
                     self.get_flag(CpuFlag::Carry) as u8
                 } else {
-                    previous & 0x80 >> 7
+                    (previous & 0x80) >> 7
                 };
 
                 self.set_flag(CpuFlag::Carry, previous & 0x80 != 0);
@@ -547,7 +547,7 @@ impl Cpu {
                 let bit = if use_carry {
                     self.get_flag(CpuFlag::Carry) as u8
                 } else {
-                    self.a & 0x80 >> 7
+                    (self.a & 0x80) >> 7
                 };
 
                 self.set_flag(CpuFlag::Carry, self.a & 0x80 != 0);
@@ -589,7 +589,7 @@ impl Cpu {
             Instruction::ShiftLeft(to) => {
                 let value = self.get_u8(mem, to)?;
 
-                self.set_flag(CpuFlag::Carry, value & 1 != 0);
+                self.set_flag(CpuFlag::Carry, value & 0x80 != 0);
                 let result = value << 1;
 
                 self.set_u8(mem, to, result)?;
@@ -1101,14 +1101,14 @@ impl Cpu {
                     0x25 => instr!(ShiftLeft (:R L)),
                     0x26 => instr!(ShiftLeft (@R HL)),
                     0x27 => instr!(ShiftLeft (:R A)),
-                    0x28 => instr!(ShiftRight (:R B) (= true)),
-                    0x29 => instr!(ShiftRight (:R C) (= true)),
-                    0x2a => instr!(ShiftRight (:R D) (= true)),
-                    0x2b => instr!(ShiftRight (:R E) (= true)),
-                    0x2c => instr!(ShiftRight (:R H) (= true)),
-                    0x2d => instr!(ShiftRight (:R L) (= true)),
-                    0x2e => instr!(ShiftRight (@R HL) (= true)),
-                    0x2f => instr!(ShiftRight (:R A) (= true)),
+                    0x28 => instr!(ShiftRight (:R B) (= false)),
+                    0x29 => instr!(ShiftRight (:R C) (= false)),
+                    0x2a => instr!(ShiftRight (:R D) (= false)),
+                    0x2b => instr!(ShiftRight (:R E) (= false)),
+                    0x2c => instr!(ShiftRight (:R H) (= false)),
+                    0x2d => instr!(ShiftRight (:R L) (= false)),
+                    0x2e => instr!(ShiftRight (@R HL) (= false)),
+                    0x2f => instr!(ShiftRight (:R A) (= false)),
                     0x30 => instr!(Swap (:R B)),
                     0x31 => instr!(Swap (:R C)),
                     0x32 => instr!(Swap (:R D)),
