@@ -208,6 +208,7 @@ pub enum Instruction {
     RotateLeft(InstructionOperand, bool),
     RotateRightA(bool),
     RotateRight(InstructionOperand, bool),
+    ShiftLeft(InstructionOperand),
     ShiftRight(InstructionOperand, bool),
     Return,
     ReturnIf(CpuFlag, bool),
@@ -257,6 +258,7 @@ impl Instruction {
             Instruction::RotateRightA(_) => 1,
             Instruction::RotateRight(to, _) => 2 + to.cycles(true),
             Instruction::ShiftRight(to, _) => 2 + to.cycles(true),
+            Instruction::ShiftLeft(to) => 2 + to.cycles(true),
             Instruction::Return => 4,
             Instruction::ReturnIf(_, _) => 2,
             Instruction::DisableInterrupts => 1,
@@ -336,6 +338,9 @@ impl fmt::Display for Instruction {
             }
             Instruction::ShiftRight(to, zero) => {
                 write!(f, "sr{} {}", if *zero { "l" } else { "a" }, to)
+            }
+            Instruction::ShiftLeft(to) => {
+                write!(f, "sla {}", to)
             }
             Instruction::Return => write!(f, "ret"),
             Instruction::ReturnIf(flag, expected) => {

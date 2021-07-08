@@ -586,6 +586,18 @@ impl Cpu {
                 self.set_flag(CpuFlag::Subtraction, false);
                 self.set_flag(CpuFlag::HalfCarry, false);
             }
+            Instruction::ShiftLeft(to) => {
+                let value = self.get_u8(mem, to)?;
+
+                self.set_flag(CpuFlag::Carry, value & 1 != 0);
+                let result = value << 1;
+
+                self.set_u8(mem, to, result)?;
+
+                self.set_flag(CpuFlag::Zero, result == 0);
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, false);
+            }
             Instruction::Return => self.pc = self.pop_u16(mem)?,
             Instruction::ReturnIf(flag, expected) => {
                 if self.get_flag(flag) == expected {
@@ -1081,6 +1093,14 @@ impl Cpu {
                     0x1d => instr!(RotateRight (:R L) (= true)),
                     0x1e => instr!(RotateRight (@R HL) (= true)),
                     0x1f => instr!(RotateRight (:R A) (= true)),
+                    0x20 => instr!(ShiftLeft (:R B)),
+                    0x21 => instr!(ShiftLeft (:R C)),
+                    0x22 => instr!(ShiftLeft (:R D)),
+                    0x23 => instr!(ShiftLeft (:R E)),
+                    0x24 => instr!(ShiftLeft (:R H)),
+                    0x25 => instr!(ShiftLeft (:R L)),
+                    0x26 => instr!(ShiftLeft (@R HL)),
+                    0x27 => instr!(ShiftLeft (:R A)),
                     0x28 => instr!(ShiftRight (:R B) (= true)),
                     0x29 => instr!(ShiftRight (:R C) (= true)),
                     0x2a => instr!(ShiftRight (:R D) (= true)),
@@ -1297,9 +1317,6 @@ impl Cpu {
                     0xfd => instr!(SetBit (= 7) (:R L) (= true)),
                     0xfe => instr!(SetBit (= 7) (@R HL) (= true)),
                     0xff => instr!(SetBit (= 7) (:R A) (= true)),
-                    _ => Err(InstructionError::InvalidOpcode {
-                        opcode: opcode as u16 + 0xcb00,
-                    }),
                 }
             }
             0xcc => instr!(CallIf (F Zero) (= true) ABS16),
