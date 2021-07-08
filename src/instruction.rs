@@ -219,6 +219,7 @@ pub enum Instruction {
     DAA,
     SetBit(u8, InstructionOperand, bool),
     SPOps(SPOps),
+    SetCarryFlag(bool),
 }
 
 impl Instruction {
@@ -266,6 +267,7 @@ impl Instruction {
             Instruction::DAA => 1,
             Instruction::SetBit(_, to, _) => 2 + to.cycles(true),
             Instruction::SPOps(op) => op.cycles(),
+            Instruction::SetCarryFlag(_) => 1,
         }
     }
 }
@@ -345,6 +347,7 @@ impl fmt::Display for Instruction {
                 write!(f, "{} {}, {}", if *set { "set" } else { "res" }, bit, to)
             }
             Instruction::SPOps(op) => op.fmt(f),
+            Instruction::SetCarryFlag(toggle) => write!(f, "{}cf", if *toggle { "c" } else { "s" }),
         }
     }
 }

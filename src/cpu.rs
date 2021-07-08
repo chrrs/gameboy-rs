@@ -701,6 +701,19 @@ impl Cpu {
                     self.sp = self.hl();
                 }
             },
+            Instruction::SetCarryFlag(toggle) => {
+                self.set_flag(
+                    CpuFlag::Carry,
+                    if toggle {
+                        !self.get_flag(CpuFlag::Carry)
+                    } else {
+                        true
+                    },
+                );
+
+                self.set_flag(CpuFlag::Subtraction, false);
+                self.set_flag(CpuFlag::HalfCarry, false);
+            }
             _ => panic!("unimplemented instruction {:x?}", instruction),
         }
 
@@ -863,6 +876,7 @@ impl Cpu {
             0x34 => instr!(Increment (@R HL)),
             0x35 => instr!(Decrement (@R HL)),
             0x36 => instr!(Load (@R HL) IMM8),
+            0x37 => instr!(SetCarryFlag (= false)),
             0x38 => instr!(JumpRelativeIf (F Carry) (= true) REL8),
             0x39 => instr!(Add16 (R HL) (:R SP)),
             0x3a => instr!(Load (:R A) (@R- HL)),
@@ -870,6 +884,7 @@ impl Cpu {
             0x3c => instr!(Increment (:R A)),
             0x3d => instr!(Decrement (:R A)),
             0x3e => instr!(Load (:R A) IMM8),
+            0x3f => instr!(SetCarryFlag (= true)),
             0x40 => instr!(Load (:R B) (:R B)),
             0x41 => instr!(Load (:R B) (:R C)),
             0x42 => instr!(Load (:R B) (:R D)),
