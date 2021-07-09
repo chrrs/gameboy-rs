@@ -221,6 +221,7 @@ pub enum Instruction {
     SetBit(u8, InstructionOperand, bool),
     SPOps(SPOps),
     SetCarryFlag(bool),
+    Halt,
 }
 
 impl Instruction {
@@ -270,6 +271,7 @@ impl Instruction {
             Instruction::SetBit(_, to, _) => 2 + to.cycles(true),
             Instruction::SPOps(op) => op.cycles(),
             Instruction::SetCarryFlag(_) => 1,
+            Instruction::Halt => 1,
         }
     }
 }
@@ -357,6 +359,7 @@ impl fmt::Display for Instruction {
             }
             Instruction::SPOps(op) => op.fmt(f),
             Instruction::SetCarryFlag(toggle) => write!(f, "{}cf", if *toggle { "c" } else { "s" }),
+            Instruction::Halt => write!(f, "halt"),
         }
     }
 }

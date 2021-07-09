@@ -1,5 +1,9 @@
+use crate::{cpu::Interrupts, timer::Timer};
+use anyhow::Context;
+
 use crate::{
     cartridge::Cartridge,
+    cpu::Cpu,
     gpu::{Gpu, LcdControl},
 };
 
@@ -10,8 +14,11 @@ pub struct Mmu {
     pub use_bios: bool,
     pub cart: Cartridge,
     pub gpu: Gpu,
+    pub timer: Timer,
     wram: Box<[u8; 0x2000]>,
     hram: Box<[u8; 0x7f]>,
+    interrupts: Interrupts,
+    interrupts_enabled: Interrupts,
 }
 
 impl Mmu {
@@ -21,9 +28,50 @@ impl Mmu {
             use_bios: true,
             cart,
             gpu,
+            timer: Timer::new(),
             wram: Box::new([0; 0x2000]),
             hram: Box::new([0; 0x7f]),
+            interrupts: Interrupts::empty(),
+            interrupts_enabled: Interrupts::empty(),
         }
+    }
+
+    pub fn step(&mut self, cpu: &mut Cpu) -> bool {
+        let cycles = if cpu.halted {
+            4
+        } else {
+            cpu.exec_next_instruction(self)
+                .context("failed to execute next instruction")
+                .unwrap()
+        };
+
+        let (frame, new_interrupts) = self.gpu.cycle(4 * cycles);
+        self.interrupts.insert(new_interrupts);
+
+        let new_interrupts = self.timer.cycle(cycles);
+        self.interrupts.insert(new_interrupts);
+
+        let mut to_process_interrupts = self.interrupts;
+        to_process_interrupts.remove(!self.interrupts_enabled);
+
+        if !to_process_interrupts.is_empty() {
+            cpu.halted = false;
+        }
+
+        let (cycles, handled_interrupts) = cpu.process_interrupts(self, to_process_interrupts);
+        self.interrupts.remove(handled_interrupts);
+
+        if cycles != 0 {
+            let (frame2, new_interrupts) = self.gpu.cycle(4 * cycles);
+            self.interrupts.insert(new_interrupts);
+
+            let new_interrupts = self.timer.cycle(cycles);
+            self.interrupts.insert(new_interrupts);
+
+            return frame || frame2;
+        }
+
+        frame
     }
 }
 
@@ -44,6 +92,11 @@ impl Memory for Mmu {
             0xfe00..=0xfe9f => Ok(self.gpu.oam[address as usize - 0xfe00]),
             0xfea0..=0xfeff => Ok(0xff),
             0xff00 => Ok(0xff), // Joypad P1
+            0xff04 => Ok(self.timer.divider),
+            0xff05 => Ok(self.timer.counter),
+            0xff06 => Ok(self.timer.modulo),
+            0xff07 => Ok(self.timer.timer_control()),
+            0xff0f => Ok(self.interrupts.bits()),
             0xff40 => Ok(self.gpu.lcd_control.bits()),
             0xff41 => Ok(self.gpu.stat()),
             0xff42 => Ok(self.gpu.scroll_y),
@@ -53,7 +106,7 @@ impl Memory for Mmu {
             0xff47 => Ok(pack_palette(self.gpu.bg_palette)),
             0xff4d => Ok(0), // GBC Speed switch
             0xff80..=0xfffe => Ok(self.hram[address as usize - 0xff80]),
-            0xffff => Ok(0), // Enable interrupts
+            0xffff => Ok(self.interrupts_enabled.bits()),
             _ => Err(MemoryError::Unmapped {
                 address,
                 op: MemoryOperation::Read,
@@ -93,12 +146,29 @@ impl Memory for Mmu {
                 Ok(())
             }
             0xfea0..=0xfeff => Ok(()),
-            0xff00 => Ok(()),          // Joypad P1
-            0xff01 => Ok(()),          // Serial transfer data
-            0xff02 => Ok(()),          // Serial transfer control
-            0xff06 => Ok(()),          // Timer Modulo
-            0xff07 => Ok(()),          // Timer Control
-            0xff0f => Ok(()),          // Interrupt flag
+            0xff00 => Ok(()), // Joypad P1
+            0xff01 => Ok(()), // Serial transfer data
+            0xff02 => Ok(()), // Serial transfer control
+            0xff04 => {
+                self.timer.divider = value;
+                Ok(())
+            }
+            0xff05 => {
+                self.timer.counter = value;
+                Ok(())
+            }
+            0xff06 => {
+                self.timer.modulo = value;
+                Ok(())
+            }
+            0xff07 => {
+                self.timer.set_timer_control(value);
+                Ok(())
+            }
+            0xff0f => {
+                self.interrupts = Interrupts::from_bits_truncate(value);
+                Ok(())
+            } // Interrupt flag
             0xff10..=0xff26 => Ok(()), // Sound
             0xff40 => {
                 self.gpu.lcd_control = LcdControl::from_bits_truncate(value);
@@ -142,7 +212,10 @@ impl Memory for Mmu {
                 self.hram[address as usize - 0xff80] = value;
                 Ok(())
             }
-            0xffff => Ok(()), // Enable interrupts
+            0xffff => {
+                self.interrupts_enabled = Interrupts::from_bits_truncate(value);
+                Ok(())
+            }
             _ => Err(MemoryError::Unmapped {
                 address,
                 op: MemoryOperation::Write,

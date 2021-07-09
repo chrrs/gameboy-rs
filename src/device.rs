@@ -61,12 +61,7 @@ impl Device {
         #[cfg(not(feature = "dump-log"))]
         let Device { cpu, mmu, .. } = self;
 
-        let cycles = cpu
-            .exec_next_instruction(mmu)
-            .context("failed to execute next instruction")
-            .unwrap();
-
-        if mmu.gpu.cycle(4 * cycles) {
+        if mmu.step(cpu) {
             self.update_framebuffers();
             true
         } else {

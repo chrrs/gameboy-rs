@@ -7,3 +7,4 @@ pub mod device;
 pub mod gpu;
 pub mod instruction;
 pub mod memory;
+pub mod timer;

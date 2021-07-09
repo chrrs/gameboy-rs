@@ -1,3 +1,4 @@
+use crate::cpu::Interrupts;
 use bitflags::bitflags;
 
 bitflags! {
@@ -112,8 +113,10 @@ impl Gpu {
         self.line
     }
 
-    pub fn cycle(&mut self, cycles: usize) -> bool {
+    pub fn cycle(&mut self, cycles: usize) -> (bool, Interrupts) {
         self.mode_cycles += cycles;
+
+        let mut new_interrupts = Interrupts::empty();
 
         match self.mode {
             GpuMode::HBlank => {
@@ -121,11 +124,36 @@ impl Gpu {
                     self.mode_cycles -= 204;
                     self.line += 1;
 
+                    if self
+                        .stat_interrupt_source
+                        .contains(StatInterruptSource::LYC_LY)
+                        && self.lyc == self.line
+                    {
+                        new_interrupts.insert(Interrupts::LCD_STAT);
+                    }
+
                     if self.line == 143 {
                         self.mode = GpuMode::VBlank;
-                        return true;
+
+                        if self
+                            .stat_interrupt_source
+                            .contains(StatInterruptSource::VBLANK)
+                        {
+                            new_interrupts.insert(Interrupts::LCD_STAT);
+                        }
+
+                        new_interrupts.insert(Interrupts::VBLANK);
+
+                        return (true, new_interrupts);
                     } else {
                         self.mode = GpuMode::OamRead;
+
+                        if self
+                            .stat_interrupt_source
+                            .contains(StatInterruptSource::OAM)
+                        {
+                            new_interrupts.insert(Interrupts::LCD_STAT);
+                        }
                     }
                 }
             }
@@ -137,6 +165,17 @@ impl Gpu {
                     if self.line > 153 {
                         self.mode = GpuMode::OamRead;
                         self.line = 0;
+
+                        if (self
+                            .stat_interrupt_source
+                            .contains(StatInterruptSource::LYC_LY)
+                            && self.lyc == self.line)
+                            || self
+                                .stat_interrupt_source
+                                .contains(StatInterruptSource::OAM)
+                        {
+                            new_interrupts.insert(Interrupts::LCD_STAT);
+                        }
                     }
                 }
             }
@@ -152,11 +191,18 @@ impl Gpu {
                     self.mode = GpuMode::HBlank;
 
                     self.render_scanline();
+
+                    if self
+                        .stat_interrupt_source
+                        .contains(StatInterruptSource::HBLANK)
+                    {
+                        new_interrupts.insert(Interrupts::LCD_STAT);
+                    }
                 }
             }
         }
 
-        false
+        (false, new_interrupts)
     }
 
     pub fn update_tile(&mut self, vram_address: u16) {

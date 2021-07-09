@@ -1,3 +1,5 @@
+use anyhow::Context;
+use bitflags::bitflags;
 use std::{collections::BTreeMap, fmt, u8};
 use thiserror::Error;
 
@@ -5,6 +7,23 @@ use crate::{
     instruction::{CpuRegister, Instruction, InstructionOperand, SPOps},
     memory::{Memory, MemoryError, MemoryOperation},
 };
+
+bitflags! {
+    pub struct Interrupts: u8 {
+        const VBLANK = 1 << 0;
+        const LCD_STAT = 1 << 1;
+        const TIMER = 1 << 2;
+        const SERIAL = 1 << 3;
+        const JOYPAD = 1 << 4;
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum InterruptState {
+    Disabled,
+    ShouldEnable,
+    Enabled,
+}
 
 #[derive(Error, Debug, Clone, Copy)]
 pub enum InstructionError {
@@ -72,6 +91,8 @@ pub struct Cpu {
     pub f: u8,
     pub sp: u16,
     pub pc: u16,
+    pub interrupt_state: InterruptState,
+    pub halted: bool,
 }
 
 impl Cpu {
@@ -87,6 +108,8 @@ impl Cpu {
             f: 0,
             sp: 0,
             pc: 0,
+            interrupt_state: InterruptState::Disabled,
+            halted: false,
         }
     }
 
@@ -400,6 +423,10 @@ impl Cpu {
         mem: &mut M,
         instruction: Instruction,
     ) -> Result<usize, CpuError> {
+        if let InterruptState::ShouldEnable = self.interrupt_state {
+            self.interrupt_state = InterruptState::Enabled;
+        }
+
         let mut cycles = instruction.cycles();
 
         match instruction {
@@ -659,12 +686,8 @@ impl Cpu {
                 );
                 self.set_flag(CpuFlag::Carry, result < value);
             }
-            Instruction::DisableInterrupts => {
-                // TODO: Implement interrupts
-            }
-            Instruction::EnableInterrupts => {
-                // TODO: Implement interrupts
-            }
+            Instruction::DisableInterrupts => self.interrupt_state = InterruptState::Disabled,
+            Instruction::EnableInterrupts => self.interrupt_state = InterruptState::ShouldEnable,
             Instruction::Complement => {
                 self.a = !self.a;
 
@@ -746,6 +769,9 @@ impl Cpu {
 
                 self.set_flag(CpuFlag::Subtraction, false);
                 self.set_flag(CpuFlag::HalfCarry, false);
+            }
+            Instruction::Halt => {
+                self.halted = true;
             }
         }
 
@@ -973,6 +999,7 @@ impl Cpu {
             0x73 => instr!(Load (@R HL) (:R E)),
             0x74 => instr!(Load (@R HL) (:R H)),
             0x75 => instr!(Load (@R HL) (:R L)),
+            0x76 => instr!(Halt),
             0x77 => instr!(Load (@R HL) (:R A)),
             0x78 => instr!(Load (:R A) (:R B)),
             0x79 => instr!(Load (:R A) (:R C)),
@@ -1375,6 +1402,45 @@ impl Cpu {
         let ret = (mem.read(self.pc + 1)? as u16) << 8 | (mem.read(self.pc)? as u16);
         self.pc = self.pc.wrapping_add(2);
         Ok(ret)
+    }
+
+    pub fn process_interrupts<M: Memory>(
+        &mut self,
+        mem: &mut M,
+        interrupts: Interrupts,
+    ) -> (usize, Interrupts) {
+        let mut processed_interrupts = Interrupts::empty();
+
+        if let InterruptState::Enabled = self.interrupt_state {
+            let address = if interrupts.contains(Interrupts::VBLANK) {
+                processed_interrupts.insert(Interrupts::VBLANK);
+                0x40
+            } else if interrupts.contains(Interrupts::LCD_STAT) {
+                processed_interrupts.insert(Interrupts::LCD_STAT);
+                0x48
+            } else if interrupts.contains(Interrupts::TIMER) {
+                processed_interrupts.insert(Interrupts::TIMER);
+                0x50
+            } else if interrupts.contains(Interrupts::SERIAL) {
+                processed_interrupts.insert(Interrupts::SERIAL);
+                0x58
+            } else if interrupts.contains(Interrupts::JOYPAD) {
+                processed_interrupts.insert(Interrupts::JOYPAD);
+                0x60
+            } else {
+                return (0, processed_interrupts);
+            };
+
+            self.push_u16(mem, self.pc)
+                .context("error while pushing interrupt return address")
+                .unwrap();
+            self.pc = address;
+            self.interrupt_state = InterruptState::Disabled;
+
+            return (5, processed_interrupts);
+        }
+
+        (0, processed_interrupts)
     }
 
     pub fn disassemble<M: Memory>(&mut self, mem: &mut M, max: u16) -> BTreeMap<u16, String> {
