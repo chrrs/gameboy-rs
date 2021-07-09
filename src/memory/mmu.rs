@@ -51,6 +51,7 @@ impl Memory for Mmu {
             0xff44 => Ok(self.gpu.scanline()),
             0xff45 => Ok(self.gpu.lyc),
             0xff47 => Ok(pack_palette(self.gpu.bg_palette)),
+            0xff4d => Ok(0), // GBC Speed switch
             0xff80..=0xfffe => Ok(self.hram[address as usize - 0xff80]),
             0xffff => Ok(0), // Enable interrupts
             _ => Err(MemoryError::Unmapped {
@@ -128,6 +129,7 @@ impl Memory for Mmu {
             0xff49 => Ok(()), // Object Palette 1 Data
             0xff4a => Ok(()), // Window Y
             0xff4b => Ok(()), // Window X
+            0xff4d => Ok(()), // GBC Speed switch
             0xff50 => {
                 if value != 0 {
                     self.use_bios = false;

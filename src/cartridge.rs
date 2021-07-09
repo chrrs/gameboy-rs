@@ -34,8 +34,8 @@ impl Cartridge {
         self.bytes[address as usize]
     }
 
-    pub fn write(&mut self, address: u16, value: u8) {
-        self.bytes[address as usize] = value
+    pub fn write(&mut self, _address: u16, _value: u8) {
+        // self.bytes[address as usize] = value
     }
 
     fn verify_header_checksum(&self) -> bool {
