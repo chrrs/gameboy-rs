@@ -404,6 +404,7 @@ impl Cpu {
 
         match instruction {
             Instruction::Noop => {}
+            Instruction::Stop => panic!("stop"),
             Instruction::Load(to, from) => {
                 if to.is_16bit() {
                     let val = self.get_u16(mem, from)?;
@@ -746,7 +747,6 @@ impl Cpu {
                 self.set_flag(CpuFlag::Subtraction, false);
                 self.set_flag(CpuFlag::HalfCarry, false);
             }
-            _ => panic!("unimplemented instruction {:x?}", instruction),
         }
 
         Ok(cycles)
