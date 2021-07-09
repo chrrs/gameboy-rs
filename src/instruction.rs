@@ -212,6 +212,7 @@ pub enum Instruction {
     ShiftRight(InstructionOperand, bool),
     Return,
     ReturnIf(CpuFlag, bool),
+    ReturnInterrupt,
     DisableInterrupts,
     EnableInterrupts,
     Complement,
@@ -262,6 +263,7 @@ impl Instruction {
             Instruction::ShiftLeft(to) => 2 + to.cycles(true),
             Instruction::Return => 4,
             Instruction::ReturnIf(_, _) => 2,
+            Instruction::ReturnInterrupt => 4,
             Instruction::DisableInterrupts => 1,
             Instruction::EnableInterrupts => 1,
             Instruction::Complement => 1,
@@ -348,6 +350,7 @@ impl fmt::Display for Instruction {
             Instruction::ReturnIf(flag, expected) => {
                 write!(f, "ret {}{}", if *expected { "" } else { "N" }, flag)
             }
+            Instruction::ReturnInterrupt => write!(f, "reti"),
             Instruction::DisableInterrupts => write!(f, "di"),
             Instruction::EnableInterrupts => write!(f, "ei"),
             Instruction::Complement => write!(f, "cpl"),

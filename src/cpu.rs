@@ -637,6 +637,10 @@ impl Cpu {
                 let value = self.get_u8(mem, to)?;
                 self.subtract_a(value, false);
             }
+            Instruction::ReturnInterrupt => {
+                self.interrupt_state = InterruptState::Enabled;
+                self.pc = self.pop_u16(mem)?
+            }
             Instruction::Subtract(from, use_carry) => {
                 let value = self.get_u8(mem, from)?;
                 self.a = self.subtract_a(
@@ -1358,6 +1362,7 @@ impl Cpu {
             0xd6 => instr!(Subtract IMM8 (= false)),
             0xd7 => instr!(Rst (= 2)),
             0xd8 => instr!(ReturnIf (F Carry) (= true)),
+            0xd9 => instr!(ReturnInterrupt),
             0xda => instr!(JumpIf (F Carry) (= true) ABS16),
             0xdc => instr!(CallIf (F Carry) (= false) ABS16),
             0xde => instr!(Subtract IMM8 (= true)),
