@@ -97,6 +97,8 @@ impl Memory for Mmu {
             0xff06 => Ok(self.timer.modulo),
             0xff07 => Ok(self.timer.timer_control()),
             0xff0f => Ok(self.interrupts.bits()),
+            0xff10..=0xff26 => Ok(0), // Sound
+            0xff30..=0xff3f => Ok(0), // Wave Pattern RAM
             0xff40 => Ok(self.gpu.lcd_control.bits()),
             0xff41 => Ok(self.gpu.stat()),
             0xff42 => Ok(self.gpu.scroll_y),
@@ -150,7 +152,8 @@ impl Memory for Mmu {
             0xff01 => Ok(()), // Serial transfer data
             0xff02 => Ok(()), // Serial transfer control
             0xff04 => {
-                self.timer.divider = value;
+                self.timer.divider = 0;
+                self.timer.counter = 0;
                 Ok(())
             }
             0xff05 => {
@@ -170,6 +173,7 @@ impl Memory for Mmu {
                 Ok(())
             } // Interrupt flag
             0xff10..=0xff26 => Ok(()), // Sound
+            0xff30..=0xff3f => Ok(()), // Wave Pattern RAM
             0xff40 => {
                 self.gpu.lcd_control = LcdControl::from_bits_truncate(value);
                 Ok(())
@@ -191,6 +195,7 @@ impl Memory for Mmu {
                 self.gpu.lyc = value;
                 Ok(())
             }
+            0xff46 => Ok(()), // DMA Transfer
             0xff47 => {
                 self.gpu.bg_palette = unpack_palette(value);
                 Ok(())

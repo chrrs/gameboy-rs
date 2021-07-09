@@ -246,7 +246,7 @@ pub fn start_debug_view(mut device: Device) {
                     ChildWindow::new(im_str!("Instruction list")).build(&ui, || {
                         disassembly
                             .iter()
-                            .take(0x1000)
+                            .take(0x2000)
                             .for_each(|(addr, instruction)| {
                                 Selectable::new(&ImString::new(format!(
                                     "{:#06x}: {}",
