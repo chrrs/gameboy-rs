@@ -3,13 +3,13 @@ use bitflags::bitflags;
 
 bitflags! {
     pub struct LcdControl: u8 {
-        const BG_WINDOW_ENABLE = 1 << 0; // TODO: Partially
+        const BG_WINDOW_ENABLE = 1 << 0;
         const OBJ_ENABLE = 1 << 1; // TODO
         const OBJ_SIZE = 1 << 2; // TODO
         const BG_TILEMAP_AREA = 1 << 3;
-        const BG_WINDOW_TILEDATA_AREA = 1 << 4; // TODO: Partially
-        const WINDOW_ENABLE = 1 << 5; // TODO
-        const WINDOW_TILEMAP_AREA = 1 << 6; // TODO
+        const BG_WINDOW_TILEDATA_AREA = 1 << 4;
+        const WINDOW_ENABLE = 1 << 5;
+        const WINDOW_TILEMAP_AREA = 1 << 6;
         const LCD_ENABLE = 1 << 7;
     }
 }
