@@ -78,14 +78,8 @@ impl Mmu {
 impl Memory for Mmu {
     fn read(&self, address: u16) -> Result<u8, MemoryError> {
         match address {
-            0..=0xff => {
-                if self.use_bios {
-                    Ok(self.bios[address as usize])
-                } else {
-                    self.cart.read(address)
-                }
-            }
-            0x100..=0x7fff => self.cart.read(address),
+            0..=0xff if self.use_bios => Ok(self.bios[address as usize]),
+            0..=0x7fff => self.cart.read(address),
             0x8000..=0x9fff => Ok(self.gpu.vram[address as usize - 0x8000]),
             0xa000..=0xbfff => self.cart.read(address),
             0xc000..=0xdfff => Ok(self.wram[address as usize - 0xc000]),
@@ -119,17 +113,11 @@ impl Memory for Mmu {
 
     fn write(&mut self, address: u16, value: u8) -> Result<(), MemoryError> {
         match address {
-            0..=0xff => {
-                if self.use_bios {
-                    Err(MemoryError::Illegal {
-                        address,
-                        op: MemoryOperation::Write,
-                    })
-                } else {
-                    self.cart.write(address, value)
-                }
-            }
-            0x100..=0x7fff => self.cart.write(address, value),
+            0..=0xff if self.use_bios => Err(MemoryError::Illegal {
+                address,
+                op: MemoryOperation::Write,
+            }),
+            0..=0x7fff => self.cart.write(address, value),
             0x8000..=0x9fff => {
                 self.gpu.vram[address as usize - 0x8000] = value;
                 self.gpu.update_tile(address - 0x8000);

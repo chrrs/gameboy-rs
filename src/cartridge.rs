@@ -102,7 +102,7 @@ impl Cartridge {
 
     fn read_ram(&self, offset: usize, address: u16) -> u8 {
         if self.ram.is_empty() {
-            0
+            0xff
         } else {
             let offset = (offset + (address as usize & 0x1ffff)) % self.ram.len();
             self.ram[offset]
@@ -132,8 +132,10 @@ impl Memory for Cartridge {
                     let (_, upper) = state.rom_offset();
                     Ok(self.bytes[(upper | (address as usize & 0x3fff)) % self.bytes.len()])
                 }
-                0xa000..=0xbfff => Ok(self.read_ram(state.ram_offset(), address)),
-                _ => Ok(0),
+                0xa000..=0xbfff if state.enable_ram => {
+                    Ok(self.read_ram(state.ram_offset(), address))
+                }
+                _ => Ok(0xff),
             },
         }
     }
