@@ -101,6 +101,8 @@ impl Memory for Mmu {
             0xff44 => Ok(self.gpu.scanline()),
             0xff45 => Ok(self.gpu.lyc),
             0xff47 => Ok(pack_palette(self.gpu.bg_palette)),
+            0xff4a => Ok(self.gpu.window_coords.1),
+            0xff4b => Ok(self.gpu.window_coords.0),
             0xff4d => Ok(0xff),
             0xff80..=0xfffe => Ok(self.hram[address as usize - 0xff80]),
             0xffff => Ok(self.interrupts_enabled.bits()),
@@ -188,8 +190,14 @@ impl Memory for Mmu {
             }
             0xff48 => Ok(()), // Object Palette 0 Data
             0xff49 => Ok(()), // Object Palette 1 Data
-            0xff4a => Ok(()), // Window Y
-            0xff4b => Ok(()), // Window X
+            0xff4a => {
+                self.gpu.window_coords.1 = value;
+                Ok(())
+            }
+            0xff4b => {
+                self.gpu.window_coords.0 = value;
+                Ok(())
+            }
             0xff4d => Ok(()), // GBC Speed switch
             0xff50 => {
                 if value != 0 {

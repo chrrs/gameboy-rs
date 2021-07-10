@@ -65,6 +65,7 @@ pub struct Gpu {
     pub lcd_control: LcdControl,
     stat_interrupt_source: StatInterruptSource,
     pub bg_palette: [u8; 4],
+    pub window_coords: (u8, u8),
 }
 
 impl Gpu {
@@ -83,6 +84,7 @@ impl Gpu {
             lcd_control: LcdControl::empty(),
             stat_interrupt_source: StatInterruptSource::empty(),
             bg_palette: [0; 4],
+            window_coords: (0, 0),
         }
     }
 
@@ -132,7 +134,7 @@ impl Gpu {
                         new_interrupts.insert(Interrupts::LCD_STAT);
                     }
 
-                    if self.line == 143 {
+                    if self.line > 143 {
                         self.mode = GpuMode::VBlank;
 
                         if self
@@ -244,6 +246,10 @@ impl Gpu {
         } else {
             self.render_background_scanline();
         }
+
+        if self.lcd_control.contains(LcdControl::WINDOW_ENABLE) {
+            self.render_window_scanline();
+        }
     }
 
     fn render_background_scanline(&mut self) {
@@ -254,12 +260,12 @@ impl Gpu {
         };
 
         address += (self.line.wrapping_add(self.scroll_y) as usize) / 8 * 32;
-        address += (self.scroll_x / 8) as usize;
+        let mut line_offset = (self.scroll_x / 8) as usize;
 
         let tile_y = self.line.wrapping_add(self.scroll_y) % 8;
 
-        let mut tile = self.vram[address] as usize;
-        address += 1;
+        let mut tile = self.vram[address + line_offset] as usize;
+        line_offset = (line_offset + 1) % 32;
 
         if !self
             .lcd_control
@@ -272,6 +278,61 @@ impl Gpu {
         let mut tile_x = self.scroll_x % 8;
         for x in 0..160 {
             let index = x + 160 * self.line as usize;
+            self.framebuffer[index] =
+                self.bg_palette[self.tiles[tile].get(tile_x as usize, tile_y as usize) as usize];
+
+            tile_x += 1;
+            if tile_x == 8 {
+                tile_x = 0;
+                tile = self.vram[address + line_offset] as usize;
+                line_offset = (line_offset + 1) % 32;
+
+                if !self
+                    .lcd_control
+                    .contains(LcdControl::BG_WINDOW_TILEDATA_AREA)
+                    && tile < 128
+                {
+                    tile += 256;
+                }
+            }
+        }
+    }
+
+    fn render_window_scanline(&mut self) {
+        if self.line < self.window_coords.1 {
+            return;
+        }
+
+        if !(0..=166).contains(&self.window_coords.0) || !(0..=143).contains(&self.window_coords.1)
+        {
+            return;
+        }
+
+        let mut address = if self.lcd_control.contains(LcdControl::WINDOW_TILEMAP_AREA) {
+            0x1c00
+        } else {
+            0x1800
+        };
+
+        address += ((self.line - self.window_coords.1) as usize) / 8 * 32;
+
+        let tile_y = (self.line - self.window_coords.1) % 8;
+
+        let mut tile = self.vram[address] as usize;
+        address += 1;
+
+        if !self
+            .lcd_control
+            .contains(LcdControl::BG_WINDOW_TILEDATA_AREA)
+            && tile < 128
+        {
+            tile += 256;
+        }
+
+        let mut tile_x = 0;
+        let real_x = self.window_coords.0.saturating_sub(7) as usize;
+        for x in 0..160 - real_x {
+            let index = x + real_x + 160 * self.line as usize;
             self.framebuffer[index] =
                 self.bg_palette[self.tiles[tile].get(tile_x as usize, tile_y as usize) as usize];
 
