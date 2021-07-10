@@ -6,7 +6,6 @@ use std::{
 
 use gameboy::{cpu::CpuFlag, device::Device};
 use glium::{
-    backend::Facade,
     glutin::{
         dpi::LogicalSize,
         event::{Event, WindowEvent},
@@ -14,7 +13,7 @@ use glium::{
         window::WindowBuilder,
         ContextBuilder,
     },
-    texture::{ClientFormat, RawImage2d},
+    texture::{ClientFormat, MipmapsOption, RawImage2d, UncompressedFloatFormat},
     uniforms::{MagnifySamplerFilter, SamplerBehavior},
     Display, Rect, Surface, Texture2d,
 };
@@ -67,16 +66,15 @@ pub fn start_debug_view(mut device: Device) {
     let mut renderer =
         Renderer::init(&mut imgui, &display).expect("failed to create imgui glium renderer");
 
-    let data = vec![0u8; 144 * 160 * 3];
-    let raw_image = RawImage2d {
-        data: Cow::Owned(data),
-        width: 160,
-        height: 144,
-        format: ClientFormat::U8U8U8,
-    };
-
     let display_texture = Rc::new(
-        Texture2d::new(display.get_context(), raw_image).expect("failed to create display texture"),
+        Texture2d::empty_with_format(
+            &display,
+            UncompressedFloatFormat::U8U8U8,
+            MipmapsOption::NoMipmap,
+            160,
+            144,
+        )
+        .expect("failed to create display texture"),
     );
     let display_texture_id = renderer.textures().insert(Texture {
         texture: display_texture.clone(),
@@ -86,16 +84,15 @@ pub fn start_debug_view(mut device: Device) {
         },
     });
 
-    let data = vec![0u8; 3 * 16 * 24 * 8 * 8];
-    let raw_image = RawImage2d {
-        data: Cow::Owned(data),
-        width: 8 * 16,
-        height: 8 * 24,
-        format: ClientFormat::U8U8U8,
-    };
-
     let tile_texture = Rc::new(
-        Texture2d::new(display.get_context(), raw_image).expect("failed to create tile texture"),
+        Texture2d::empty_with_format(
+            &display,
+            UncompressedFloatFormat::U8U8U8,
+            MipmapsOption::NoMipmap,
+            8 * 16,
+            8 * 24,
+        )
+        .expect("failed to create tile texture"),
     );
     let tile_texture_id = renderer.textures().insert(Texture {
         texture: tile_texture.clone(),
@@ -246,14 +243,11 @@ pub fn start_debug_view(mut device: Device) {
                     ChildWindow::new(im_str!("Instruction list")).build(&ui, || {
                         disassembly
                             .iter()
-                            .take(0x2000)
+                            .take(0x500)
                             .for_each(|(addr, instruction)| {
-                                Selectable::new(&ImString::new(format!(
-                                    "{:#06x}: {}",
-                                    addr, instruction
-                                )))
-                                .selected(&device.cpu().pc == addr)
-                                .build(&ui);
+                                Selectable::new(&ImString::new(instruction))
+                                    .selected(&device.cpu().pc == addr)
+                                    .build(&ui);
 
                                 if follow_execution && &device.cpu().pc == addr {
                                     ui.set_scroll_here_y()
@@ -280,9 +274,9 @@ pub fn start_debug_view(mut device: Device) {
                 .scroll_bar(false)
                 .resizable(false)
                 .build(&ui, || {
-                    let display_framebuffer = device.display_framebuffer().to_vec();
+                    let display_framebuffer = device.display_framebuffer();
                     let raw_image = RawImage2d {
-                        data: Cow::Owned(display_framebuffer),
+                        data: Cow::Borrowed(display_framebuffer),
                         width: 160,
                         height: 144,
                         format: ClientFormat::U8U8U8,
@@ -315,9 +309,9 @@ pub fn start_debug_view(mut device: Device) {
                 .collapsed(true, Condition::FirstUseEver)
                 .position([716.0, 33.0], Condition::FirstUseEver)
                 .build(&ui, || {
-                    let tile_framebuffer = device.tile_framebuffer().to_vec();
+                    let tile_framebuffer = device.tile_framebuffer();
                     let raw_image = RawImage2d {
-                        data: Cow::Owned(tile_framebuffer),
+                        data: Cow::Borrowed(tile_framebuffer),
                         width: 8 * 16,
                         height: 8 * 24,
                         format: ClientFormat::U8U8U8,

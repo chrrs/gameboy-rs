@@ -1457,9 +1457,9 @@ impl Cpu {
         while !res.contains_key(&pc) && pc < max {
             let instruction = self.fetch_instruction(mem);
             if let Ok(instruction) = instruction {
-                res.insert(pc, format!("{}", instruction));
+                res.insert(pc, format!("{:#06x}: {}", pc, instruction));
             } else {
-                res.insert(pc, "<unknown>".to_string());
+                res.insert(pc, format!("{:#06x}: <unknown>", pc));
             }
             pc = self.pc;
         }
