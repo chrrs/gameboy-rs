@@ -67,6 +67,7 @@ pub struct Gpu {
     pub bg_palette: [u8; 4],
     pub window_coords: (u8, u8),
     window_drawing: bool,
+    window_line: usize,
 }
 
 impl Gpu {
@@ -87,6 +88,7 @@ impl Gpu {
             bg_palette: [0; 4],
             window_coords: (0, 0),
             window_drawing: false,
+            window_line: 0,
         }
     }
 
@@ -198,6 +200,7 @@ impl Gpu {
 
                     if self.window_coords.1 == self.line {
                         self.window_drawing = true;
+                        self.window_line = 0;
                     }
 
                     self.render_scanline();
@@ -326,9 +329,9 @@ impl Gpu {
             0x1800
         };
 
-        address += ((self.line - self.window_coords.1) as usize) / 8 * 32;
+        address += self.window_line / 8 * 32;
 
-        let tile_y = (self.line - self.window_coords.1) % 8;
+        let tile_y = self.window_line % 8;
 
         let mut tile = self.vram[address] as usize;
         address += 1;
@@ -363,5 +366,7 @@ impl Gpu {
                 }
             }
         }
+
+        self.window_line += 1;
     }
 }
