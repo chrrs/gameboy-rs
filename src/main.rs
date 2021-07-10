@@ -3,8 +3,10 @@ use std::fs::File;
 use clap::{App, Arg};
 use debug::start_debug_view;
 use gameboy::{cartridge::Cartridge, device::Device};
+use view::start_view;
 
 mod debug;
+mod view;
 
 fn main() {
     let matches = App::new("gameboy")
@@ -36,5 +38,7 @@ fn main() {
 
     if matches.is_present("debug") {
         start_debug_view(device);
+    } else {
+        start_view(device);
     }
 }
