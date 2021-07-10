@@ -82,11 +82,12 @@ impl Memory for Mmu {
                 if self.use_bios {
                     Ok(self.bios[address as usize])
                 } else {
-                    Ok(self.cart.read(address))
+                    self.cart.read(address)
                 }
             }
-            0x100..=0x7fff => Ok(self.cart.read(address)),
+            0x100..=0x7fff => self.cart.read(address),
             0x8000..=0x9fff => Ok(self.gpu.vram[address as usize - 0x8000]),
+            0xa000..=0xbfff => self.cart.read(address),
             0xc000..=0xdfff => Ok(self.wram[address as usize - 0xc000]),
             0xe000..=0xfdff => self.read(address - 0x2000),
             0xfe00..=0xfe9f => Ok(self.gpu.oam[address as usize - 0xfe00]),
@@ -125,19 +126,16 @@ impl Memory for Mmu {
                         op: MemoryOperation::Write,
                     })
                 } else {
-                    self.cart.write(address, value);
-                    Ok(())
+                    self.cart.write(address, value)
                 }
             }
-            0x100..=0x7fff => {
-                self.cart.write(address, value);
-                Ok(())
-            }
+            0x100..=0x7fff => self.cart.write(address, value),
             0x8000..=0x9fff => {
                 self.gpu.vram[address as usize - 0x8000] = value;
                 self.gpu.update_tile(address - 0x8000);
                 Ok(())
             }
+            0xa000..=0xbfff => self.cart.write(address, value),
             0xc000..=0xdfff => {
                 self.wram[address as usize - 0xc000] = value;
                 Ok(())
