@@ -66,6 +66,7 @@ pub struct Gpu {
     stat_interrupt_source: StatInterruptSource,
     pub bg_palette: [u8; 4],
     pub window_coords: (u8, u8),
+    window_drawing: bool,
 }
 
 impl Gpu {
@@ -85,6 +86,7 @@ impl Gpu {
             stat_interrupt_source: StatInterruptSource::empty(),
             bg_palette: [0; 4],
             window_coords: (0, 0),
+            window_drawing: false,
         }
     }
 
@@ -146,6 +148,8 @@ impl Gpu {
 
                         new_interrupts.insert(Interrupts::VBLANK);
 
+                        self.window_drawing = false;
+
                         return (true, new_interrupts);
                     } else {
                         self.mode = GpuMode::OamRead;
@@ -191,6 +195,10 @@ impl Gpu {
                 if self.mode_cycles >= 172 {
                     self.mode_cycles -= 172;
                     self.mode = GpuMode::HBlank;
+
+                    if self.window_coords.1 == self.line {
+                        self.window_drawing = true;
+                    }
 
                     self.render_scanline();
 
@@ -300,6 +308,10 @@ impl Gpu {
 
     fn render_window_scanline(&mut self) {
         if self.line < self.window_coords.1 {
+            return;
+        }
+
+        if !self.window_drawing {
             return;
         }
 
