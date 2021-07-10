@@ -101,7 +101,7 @@ impl Memory for Mmu {
             0xff44 => Ok(self.gpu.scanline()),
             0xff45 => Ok(self.gpu.lyc),
             0xff47 => Ok(pack_palette(self.gpu.bg_palette)),
-            0xff4d => Ok(0), // GBC Speed switch
+            0xff4d => Ok(0xff),
             0xff80..=0xfffe => Ok(self.hram[address as usize - 0xff80]),
             0xffff => Ok(self.interrupts_enabled.bits()),
             _ => Err(MemoryError::Unmapped {

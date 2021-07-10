@@ -1364,7 +1364,7 @@ impl Cpu {
             0xd8 => instr!(ReturnIf (F Carry) (= true)),
             0xd9 => instr!(ReturnInterrupt),
             0xda => instr!(JumpIf (F Carry) (= true) ABS16),
-            0xdc => instr!(CallIf (F Carry) (= false) ABS16),
+            0xdc => instr!(CallIf (F Carry) (= true) ABS16),
             0xde => instr!(Subtract IMM8 (= true)),
             0xdf => instr!(Rst (= 3)),
             0xe0 => instr!(Load (@IMM8 0xff00) (:R A)),
