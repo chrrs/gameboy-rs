@@ -3,11 +3,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gameboy::device::Device;
+use gameboy::{device::Device, memory::mmu::JoypadButton};
 use glium::{
     glutin::{
         dpi::LogicalSize,
-        event::{Event, WindowEvent},
+        event::{ElementState, Event, VirtualKeyCode, WindowEvent},
         event_loop::{ControlFlow, EventLoop},
         window::WindowBuilder,
         ContextBuilder,
@@ -83,6 +83,27 @@ pub fn start_view(mut device: Device) {
             event: WindowEvent::CloseRequested,
             ..
         } => *control_flow = ControlFlow::Exit,
+        Event::WindowEvent {
+            event: WindowEvent::KeyboardInput { input, .. },
+            ..
+        } => {
+            let button = match input.virtual_keycode {
+                Some(VirtualKeyCode::Left) => JoypadButton::Left,
+                Some(VirtualKeyCode::Right) => JoypadButton::Right,
+                Some(VirtualKeyCode::Up) => JoypadButton::Up,
+                Some(VirtualKeyCode::Down) => JoypadButton::Down,
+                Some(VirtualKeyCode::Z) => JoypadButton::B,
+                Some(VirtualKeyCode::X) => JoypadButton::A,
+                Some(VirtualKeyCode::LControl) => JoypadButton::Start,
+                Some(VirtualKeyCode::LShift) => JoypadButton::Select,
+                _ => return,
+            };
+
+            match input.state {
+                ElementState::Pressed => device.press(&[button]),
+                ElementState::Released => device.release(&[button]),
+            }
+        }
         _ => {}
     });
 }

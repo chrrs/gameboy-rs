@@ -9,6 +9,46 @@ use crate::{
 
 use super::{Memory, MemoryError, MemoryOperation};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum JoypadButton {
+    Up,
+    Down,
+    Left,
+    Right,
+    Start,
+    Select,
+    B,
+    A,
+}
+
+impl JoypadButton {
+    pub fn enabled_bit(&self) -> u8 {
+        match self {
+            JoypadButton::Up => 1 << 4,
+            JoypadButton::Down => 1 << 4,
+            JoypadButton::Left => 1 << 4,
+            JoypadButton::Right => 1 << 4,
+            JoypadButton::Start => 1 << 5,
+            JoypadButton::Select => 1 << 5,
+            JoypadButton::B => 1 << 5,
+            JoypadButton::A => 1 << 5,
+        }
+    }
+
+    pub fn bit(&self) -> u8 {
+        match self {
+            JoypadButton::Up => 1 << 2,
+            JoypadButton::Down => 1 << 3,
+            JoypadButton::Left => 1 << 1,
+            JoypadButton::Right => 1,
+            JoypadButton::Start => 1 << 3,
+            JoypadButton::Select => 1 << 2,
+            JoypadButton::B => 1 << 1,
+            JoypadButton::A => 1,
+        }
+    }
+}
+
 pub struct Mmu {
     bios: &'static [u8],
     pub use_bios: bool,
@@ -19,6 +59,8 @@ pub struct Mmu {
     hram: Box<[u8; 0x7f]>,
     interrupts: Interrupts,
     interrupts_enabled: Interrupts,
+    p1: u8,
+    pressed: Vec<JoypadButton>,
 }
 
 impl Mmu {
@@ -33,6 +75,8 @@ impl Mmu {
             hram: Box::new([0; 0x7f]),
             interrupts: Interrupts::empty(),
             interrupts_enabled: Interrupts::empty(),
+            p1: 0b1111,
+            pressed: Vec::new(),
         }
     }
 
@@ -73,6 +117,33 @@ impl Mmu {
 
         frame
     }
+
+    pub fn press(&mut self, buttons: &[JoypadButton]) {
+        for button in buttons {
+            self.pressed.push(*button);
+
+            if self.p1 & button.enabled_bit() != 0 {
+                continue;
+            }
+
+            if self.p1 & button.bit() != 0 {
+                self.interrupts.insert(Interrupts::JOYPAD);
+                self.p1 &= !button.bit();
+            }
+        }
+    }
+
+    pub fn release(&mut self, buttons: &[JoypadButton]) {
+        self.pressed.retain(|button| !buttons.contains(button));
+
+        for button in buttons {
+            if self.p1 & button.enabled_bit() == 0 {
+                continue;
+            }
+
+            self.p1 |= button.bit();
+        }
+    }
 }
 
 impl Memory for Mmu {
@@ -86,7 +157,7 @@ impl Memory for Mmu {
             0xe000..=0xfdff => self.read(address - 0x2000),
             0xfe00..=0xfe9f => Ok(self.gpu.oam[address as usize - 0xfe00]),
             0xfea0..=0xfeff => Ok(0xff),
-            0xff00 => Ok(0xff), // Joypad P1
+            0xff00 => Ok(self.p1),
             0xff04 => Ok(self.timer.divider),
             0xff05 => Ok(self.timer.counter),
             0xff06 => Ok(self.timer.modulo),
@@ -108,10 +179,10 @@ impl Memory for Mmu {
             0xff4d => Ok(0xff),
             0xff80..=0xfffe => Ok(self.hram[address as usize - 0xff80]),
             0xffff => Ok(self.interrupts_enabled.bits()),
-            _ => Err(MemoryError::Unmapped {
-                address,
-                op: MemoryOperation::Read,
-            }),
+            _ => {
+                println!("tried to read from unmapped memory at {:#06x}", address);
+                Ok(0)
+            }
         }
     }
 
@@ -138,7 +209,19 @@ impl Memory for Mmu {
                 Ok(())
             }
             0xfea0..=0xfeff => Ok(()),
-            0xff00 => Ok(()), // Joypad P1
+            0xff00 => {
+                self.p1 = value & 0b110000 | 0b1111;
+
+                for button in self.pressed.iter() {
+                    if self.p1 & button.enabled_bit() != 0 {
+                        continue;
+                    }
+
+                    self.p1 &= !button.bit();
+                }
+
+                Ok(())
+            }
             0xff01 => Ok(()), // Serial transfer data
             0xff02 => Ok(()), // Serial transfer control
             0xff04 => {
@@ -233,10 +316,10 @@ impl Memory for Mmu {
                 self.interrupts_enabled = Interrupts::from_bits_truncate(value);
                 Ok(())
             }
-            _ => Err(MemoryError::Unmapped {
-                address,
-                op: MemoryOperation::Write,
-            }),
+            _ => {
+                println!("tried to write to unmapped memory at {:#06x}", address);
+                Ok(())
+            }
         }
     }
 }

@@ -2,7 +2,13 @@ use std::collections::BTreeMap;
 
 use anyhow::Context;
 
-use crate::{bios::DMG_BIOS, cartridge::Cartridge, cpu::Cpu, gpu::Gpu, memory::mmu::Mmu};
+use crate::{
+    bios::DMG_BIOS,
+    cartridge::Cartridge,
+    cpu::Cpu,
+    gpu::Gpu,
+    memory::mmu::{JoypadButton, Mmu},
+};
 
 #[cfg(feature = "dump-log")]
 use crate::memory::Memory;
@@ -103,6 +109,14 @@ impl Device {
 
     pub fn display_framebuffer(&self) -> &[u8] {
         self.display_framebuffer.as_ref()
+    }
+
+    pub fn press(&mut self, buttons: &[JoypadButton]) {
+        self.mmu.press(buttons);
+    }
+
+    pub fn release(&mut self, buttons: &[JoypadButton]) {
+        self.mmu.release(buttons);
     }
 
     fn update_framebuffers(&mut self) {
