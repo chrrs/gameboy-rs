@@ -4,8 +4,8 @@ use bitflags::bitflags;
 bitflags! {
     pub struct LcdControl: u8 {
         const BG_WINDOW_ENABLE = 1 << 0;
-        const OBJ_ENABLE = 1 << 1; // TODO
-        const OBJ_SIZE = 1 << 2; // TODO
+        const OBJ_ENABLE = 1 << 1;
+        const OBJ_SIZE = 1 << 2;
         const BG_TILEMAP_AREA = 1 << 3;
         const BG_WINDOW_TILEDATA_AREA = 1 << 4;
         const WINDOW_ENABLE = 1 << 5;
@@ -261,6 +261,10 @@ impl Gpu {
         if self.lcd_control.contains(LcdControl::WINDOW_ENABLE) {
             self.render_window_scanline();
         }
+
+        if self.lcd_control.contains(LcdControl::OBJ_ENABLE) {
+            self.render_sprite_scanline();
+        }
     }
 
     fn render_background_scanline(&mut self) {
@@ -368,5 +372,59 @@ impl Gpu {
         }
 
         self.window_line += 1;
+    }
+
+    fn render_sprite_scanline(&mut self) {
+        let large_sprites = self.lcd_control.contains(LcdControl::OBJ_SIZE);
+        let sprite_height = if large_sprites { 16 } else { 8 };
+
+        let mut indices = (0..40)
+            .filter(|i| {
+                self.line + 16 >= self.oam[i * 4]
+                    && self.line + 16 < self.oam[i * 4] + sprite_height
+            })
+            .take(10)
+            .collect::<Vec<usize>>();
+
+        indices.sort_by_key(|i| self.oam[i * 4 + 1]);
+
+        for i in indices.iter() {
+            let tile_index = self.oam[i * 4 + 2] as usize;
+            let sprite_y = self.oam[i * 4] as usize - 16;
+            let sprite_x = self.oam[i * 4 + 1] as isize - 8;
+            let attributes = self.oam[i * 4 + 3];
+
+            let mut y = self.line as usize - sprite_y;
+
+            let tile = self.tiles[if large_sprites {
+                if y >= 8 {
+                    y -= 8;
+                    (tile_index & 0xfe) + 1
+                } else {
+                    tile_index & 0xfe
+                }
+            } else {
+                tile_index
+            }];
+
+            let bg_priority = attributes & (1 << 7) != 0;
+
+            for x in 0..8 {
+                let pixel = tile.get(x, y);
+
+                if pixel == 0 {
+                    continue;
+                }
+
+                if (sprite_x + x as isize) < 0 {
+                    continue;
+                }
+
+                let index = self.line as usize * 160 + (sprite_x + x as isize) as usize;
+                if !bg_priority || self.framebuffer[index] == 0 {
+                    self.framebuffer[index] = pixel;
+                }
+            }
+        }
     }
 }

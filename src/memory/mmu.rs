@@ -183,7 +183,17 @@ impl Memory for Mmu {
                 self.gpu.lyc = value;
                 Ok(())
             }
-            0xff46 => Ok(()), // DMA Transfer
+            0xff46 => {
+                assert!(value <= 0xf1);
+
+                let base = (value as u16) << 8;
+                for i in 0..0xa0 {
+                    let value = self.read(base + i)?;
+                    self.write(0xfe00 + i, value)?;
+                }
+
+                Ok(())
+            }
             0xff47 => {
                 self.gpu.bg_palette = unpack_palette(value);
                 Ok(())
