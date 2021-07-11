@@ -1,10 +1,12 @@
 use std::{
     ffi::CStr,
-    fs::File,
-    io::{self, BufReader, Read},
+    fs::{create_dir_all, File},
+    io::{self, BufReader, Read, Write},
+    path::Path,
 };
 
 use crate::memory::{Memory, MemoryError};
+use anyhow::anyhow;
 
 const LOGO: [u8; 0x30] = [
     0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
@@ -107,6 +109,41 @@ impl Cartridge {
 
     pub fn verify(&self) -> bool {
         self.bytes[0x104..=0x133] == LOGO && self.verify_header_checksum()
+    }
+
+    pub fn try_load(&mut self) {
+        let file_name = format!(
+            "saves/{}.sav",
+            self.title().expect("game has invalid title")
+        );
+
+        let path = Path::new(&file_name);
+
+        if path.exists() {
+            self.load(File::open(path).expect("failed to open save file"));
+        }
+    }
+
+    fn load(&mut self, file: File) {
+        let mut reader = BufReader::new(file);
+        reader
+            .read_to_end(&mut self.ram)
+            .expect("failed to read save file");
+    }
+
+    pub fn save(&self) -> anyhow::Result<()> {
+        let file_name = format!(
+            "saves/{}.sav",
+            self.title()
+                .ok_or_else(|| anyhow!("game has invalid title"))?
+        );
+
+        create_dir_all("saves")?;
+
+        let mut file = File::create(file_name)?;
+        file.write_all(&self.ram)?;
+
+        Ok(())
     }
 
     fn verify_header_checksum(&self) -> bool {

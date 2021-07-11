@@ -346,7 +346,13 @@ pub fn start_debug_view(mut device: Device) {
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
-        } => *control_flow = ControlFlow::Exit,
+        } => {
+            if let Err(err) = device.cart().save() {
+                println!("failed to save game: {:?}", err)
+            }
+
+            *control_flow = ControlFlow::Exit
+        }
         event => platform.handle_event(imgui.io_mut(), display.gl_window().window(), &event),
     });
 }

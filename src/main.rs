@@ -25,7 +25,7 @@ fn main() {
         )
         .get_matches();
 
-    let cart = Cartridge::new(
+    let mut cart = Cartridge::new(
         File::open(
             matches
                 .value_of("rom")
@@ -34,6 +34,7 @@ fn main() {
         .expect("file not found"),
     )
     .expect("failed to read file");
+    cart.try_load();
     let device = Device::new(cart);
 
     if matches.is_present("debug") {

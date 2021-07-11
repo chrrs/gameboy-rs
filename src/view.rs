@@ -82,7 +82,13 @@ pub fn start_view(mut device: Device) {
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
-        } => *control_flow = ControlFlow::Exit,
+        } => {
+            if let Err(err) = device.cart().save() {
+                println!("failed to save game: {:?}", err)
+            }
+
+            *control_flow = ControlFlow::Exit
+        }
         Event::WindowEvent {
             event: WindowEvent::KeyboardInput { input, .. },
             ..
