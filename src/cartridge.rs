@@ -44,9 +44,24 @@ impl MBC1State {
     }
 }
 
+struct MBC3State {
+    bank: u8,
+    map_select: u8,
+}
+
+impl MBC3State {
+    pub fn new() -> MBC3State {
+        MBC3State {
+            bank: 1,
+            map_select: 0,
+        }
+    }
+}
+
 enum MBC {
     None,
     MBC1(MBC1State),
+    MBC3(MBC3State),
 }
 
 pub struct Cartridge {
@@ -64,6 +79,7 @@ impl Cartridge {
         let mbc = match buffer[0x147] {
             0x00 => MBC::None,
             0x01..=0x03 => MBC::MBC1(MBC1State::new()),
+            0x13 => MBC::MBC3(MBC3State::new()),
             _ => panic!("unsupported MBC type {:#04x}", buffer[0x147]),
         };
 
@@ -137,6 +153,16 @@ impl Memory for Cartridge {
                 }
                 _ => Ok(0xff),
             },
+            MBC::MBC3(ref state) => match address {
+                0x0000..=0x3fff => Ok(self.bytes[(address as usize & 0x3fff) % self.bytes.len()]),
+                0x4000..=0x7fff => Ok(self.bytes[((0x4000 * state.bank as usize)
+                    | (address as usize & 0x3fff))
+                    % self.bytes.len()]),
+                0xa000..=0xbfff if state.map_select <= 0x03 => {
+                    Ok(self.read_ram(0x2000 * (state.map_select & 0b11) as usize, address))
+                }
+                _ => Ok(0xff),
+            },
         }
     }
 
@@ -151,6 +177,16 @@ impl Memory for Cartridge {
                 0xa000..=0xbfff if state.enable_ram => {
                     let offset = state.ram_offset();
                     self.write_ram(offset, address, value)
+                }
+                _ => {}
+            },
+            MBC::MBC3(ref mut state) => match address {
+                0x0000..=0x1fff => {}
+                0x2000..=0x3fff => state.bank = if value == 0 { 1 } else { value },
+                0x4000..=0x5fff => state.map_select = value & 0b1111,
+                0xa000..=0xbfff if state.map_select <= 0x03 => {
+                    let offset = 0x2000 * (state.map_select & 0b11) as usize;
+                    self.write_ram(offset, address, value);
                 }
                 _ => {}
             },

@@ -181,7 +181,7 @@ impl Memory for Mmu {
             0xffff => Ok(self.interrupts_enabled.bits()),
             _ => {
                 println!("tried to read from unmapped memory at {:#06x}", address);
-                Ok(0)
+                Ok(0xff)
             }
         }
     }
@@ -244,7 +244,7 @@ impl Memory for Mmu {
             0xff0f => {
                 self.interrupts = Interrupts::from_bits_truncate(value);
                 Ok(())
-            } // Interrupt flag
+            }
             0xff10..=0xff26 => Ok(()), // Sound
             0xff30..=0xff3f => Ok(()), // Wave Pattern RAM
             0xff40 => {
