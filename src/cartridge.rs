@@ -1,4 +1,5 @@
 use std::{
+    ffi::CStr,
     fs::File,
     io::{self, BufReader, Read},
 };
@@ -99,7 +100,9 @@ impl Cartridge {
     }
 
     pub fn title(&self) -> Option<&str> {
-        std::str::from_utf8(&self.bytes[0x134..=0x143]).ok()
+        unsafe { CStr::from_ptr(&self.bytes[0x134] as *const u8 as *const _) }
+            .to_str()
+            .ok()
     }
 
     pub fn verify(&self) -> bool {
