@@ -101,6 +101,8 @@ impl Memory for Mmu {
             0xff44 => Ok(self.gpu.scanline()),
             0xff45 => Ok(self.gpu.lyc),
             0xff47 => Ok(pack_palette(self.gpu.bg_palette)),
+            0xff48 => Ok(pack_palette(self.gpu.obj_palette[0])),
+            0xff49 => Ok(pack_palette(self.gpu.obj_palette[1])),
             0xff4a => Ok(self.gpu.window_coords.1),
             0xff4b => Ok(self.gpu.window_coords.0),
             0xff4d => Ok(0xff),
@@ -198,8 +200,14 @@ impl Memory for Mmu {
                 self.gpu.bg_palette = unpack_palette(value);
                 Ok(())
             }
-            0xff48 => Ok(()), // Object Palette 0 Data
-            0xff49 => Ok(()), // Object Palette 1 Data
+            0xff48 => {
+                self.gpu.obj_palette[0] = unpack_palette(value);
+                Ok(())
+            }
+            0xff49 => {
+                self.gpu.obj_palette[1] = unpack_palette(value);
+                Ok(())
+            }
             0xff4a => {
                 self.gpu.window_coords.1 = value;
                 Ok(())

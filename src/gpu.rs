@@ -69,6 +69,7 @@ pub struct Gpu {
     pub lcd_control: LcdControl,
     stat_interrupt_source: StatInterruptSource,
     pub bg_palette: [u8; 4],
+    pub obj_palette: [[u8; 4]; 2],
     pub window_coords: (u8, u8),
     window_drawing: bool,
     window_line: usize,
@@ -90,6 +91,7 @@ impl Gpu {
             lcd_control: LcdControl::empty(),
             stat_interrupt_source: StatInterruptSource::empty(),
             bg_palette: [0; 4],
+            obj_palette: [[0; 4], [0; 4]],
             window_coords: (0, 0),
             window_drawing: false,
             window_line: 0,
@@ -256,9 +258,7 @@ impl Gpu {
             return;
         }
 
-        if !self.lcd_control.contains(LcdControl::BG_WINDOW_ENABLE) {
-            self.framebuffer.fill(0);
-        } else {
+        if self.lcd_control.contains(LcdControl::BG_WINDOW_ENABLE) {
             self.render_background_scanline();
         }
 
@@ -384,21 +384,21 @@ impl Gpu {
 
         let mut indices = (0..40)
             .filter(|i| {
-                self.line + 16 >= self.oam[i * 4]
-                    && self.line + 16 < self.oam[i * 4] + sprite_height
+                self.line as isize >= self.oam[i * 4] as isize - 16
+                    && (self.line as isize) < (self.oam[i * 4] + sprite_height) as isize - 16
             })
             .take(10)
             .collect::<Vec<usize>>();
 
         indices.sort_by_key(|i| self.oam[i * 4 + 1]);
 
-        for i in indices.iter() {
+        for i in indices.iter().rev() {
             let tile_index = self.oam[i * 4 + 2] as usize;
-            let sprite_y = self.oam[i * 4] as usize - 16;
+            let sprite_y = self.oam[i * 4] as isize - 16;
             let sprite_x = self.oam[i * 4 + 1] as isize - 8;
             let attributes = self.oam[i * 4 + 3];
 
-            let mut y = self.line as usize - sprite_y;
+            let mut y = (self.line as isize - sprite_y) as usize;
 
             if attributes & (1 << 6) != 0 {
                 if large_sprites {
@@ -420,25 +420,30 @@ impl Gpu {
             }];
 
             let bg_priority = attributes & (1 << 7) != 0;
+            let palette = ((attributes & (1 << 4)) >> 4) as usize;
 
             for x in 0..8 {
                 let pixel = if attributes & (1 << 5) != 0 {
                     tile.get_x_flipped(x, y)
                 } else {
                     tile.get(x, y)
-                };
+                } as usize;
 
                 if pixel == 0 {
                     continue;
                 }
 
-                if (sprite_x + x as isize) < 0 {
+                if sprite_x + (x as isize) < 0 {
                     continue;
+                }
+
+                if sprite_x + x as isize >= 160 {
+                    break;
                 }
 
                 let index = self.line as usize * 160 + (sprite_x + x as isize) as usize;
                 if !bg_priority || self.framebuffer[index] == 0 {
-                    self.framebuffer[index] = pixel;
+                    self.framebuffer[index] = self.obj_palette[palette][pixel];
                 }
             }
         }
