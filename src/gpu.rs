@@ -49,6 +49,10 @@ impl Tile {
     pub fn get(&self, x: usize, y: usize) -> u8 {
         self.pixels[x + y * 8]
     }
+
+    pub fn get_x_flipped(&self, x: usize, y: usize) -> u8 {
+        self.pixels[(7 - x) + y * 8]
+    }
 }
 
 pub struct Gpu {
@@ -396,6 +400,14 @@ impl Gpu {
 
             let mut y = self.line as usize - sprite_y;
 
+            if attributes & (1 << 6) != 0 {
+                if large_sprites {
+                    y = 15 - y;
+                } else {
+                    y = 7 - y;
+                }
+            }
+
             let tile = self.tiles[if large_sprites {
                 if y >= 8 {
                     y -= 8;
@@ -410,7 +422,11 @@ impl Gpu {
             let bg_priority = attributes & (1 << 7) != 0;
 
             for x in 0..8 {
-                let pixel = tile.get(x, y);
+                let pixel = if attributes & (1 << 5) != 0 {
+                    tile.get_x_flipped(x, y)
+                } else {
+                    tile.get(x, y)
+                };
 
                 if pixel == 0 {
                     continue;
